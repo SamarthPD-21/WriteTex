@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "WriteTex — AI Copilot for LaTeX",
+  "version": "0.1.0",
+  "description": "AI copilot for LaTeX and academic writing. Understands, edits, and improves papers directly in Overleaf.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.overleaf.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.overleaf.com/project/*",
+        "*://*.overleaf.com/read/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.overleaf.com/project/*",
+        "*://*.overleaf.com/read/*"
+      ],
+      "js": ["bridge.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "WriteTex",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "commands": {
+    "open-writetex": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+W",
+        "mac": "Command+Shift+W"
+      },
+      "description": "Toggle WriteTex AI Panel"
+    }
+  }
+}

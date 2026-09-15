@@ -1,0 +1,42 @@
+{
+  "name": "writetex",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WriteTex — AI Copilot for LaTeX and Academic Writing",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/build.js",
+    "build": "tsc --noEmit && node scripts/build.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@retorquere/bibtex-parser": "^11.0.0",
+    "@unified-latex/unified-latex-ctan": "^1.8.4",
+    "@unified-latex/unified-latex-types": "^1.8.4",
+    "@unified-latex/unified-latex-util-parse": "^1.8.4",
+    "@unified-latex/unified-latex-util-print-raw": "^1.8.4",
+    "@unified-latex/unified-latex-util-visit": "^1.8.4",
+    "clsx": "^2.1.1",
+    "diff": "^7.0.0",
+    "diff-match-patch": "^1.0.5",
+    "lucide-react": "^1.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.308",
+    "@types/diff": "^7.0.2",
+    "@types/diff-match-patch": "^1.0.36",
+    "@types/node": "^22.13.9",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
+  }
+}
