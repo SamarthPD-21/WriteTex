@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, FileText, Zap, X } from 'lucide-react';
-import { PRESET_PROMPTS } from '../../prompts/presets';
+import { Sparkles, FileText, Zap, X, Briefcase, Wand2 } from 'lucide-react';
+import { ROLE_PRESETS, RolePreset } from '../../prompts/presets';
 import { ModelSelector } from './ModelSelector';
 import { Settings, AIProviderId } from '../../messaging/types';
 import { KeyboardShortcutHint } from './KeyboardShortcutHint';
@@ -25,24 +25,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onOpenSettings,
 }) => {
   const [prompt, setPrompt] = useState('');
-  const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [activeRole, setActiveRole] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'roles' | 'actions'>('roles');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 130)}px`;
     }
   }, [prompt]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const query = prompt.trim();
-    if (!query && !activePreset) return;
+    if (!query && !activeRole) return;
 
-    const finalPrompt = query || (PRESET_PROMPTS.find((p) => p.id === activePreset)?.userPrompt ?? '');
-    onGenerate(finalPrompt, activePreset || undefined);
+    const finalPrompt = query || (ROLE_PRESETS.find((p) => p.id === activeRole)?.userPrompt ?? '');
+    onGenerate(finalPrompt, activeRole || undefined);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -52,28 +53,28 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
-  const handleSelectPreset = (presetId: string) => {
-    if (activePreset === presetId) {
-      setActivePreset(null);
+  const handleSelectPreset = (preset: RolePreset) => {
+    if (activeRole === preset.id) {
+      setActiveRole(null);
       setPrompt('');
     } else {
-      setActivePreset(presetId);
-      const preset = PRESET_PROMPTS.find((p) => p.id === presetId);
-      if (preset) {
-        setPrompt(preset.userPrompt);
-      }
+      setActiveRole(preset.id);
+      setPrompt(preset.userPrompt);
     }
   };
 
   const hasApiKey = Boolean(settings.apiKeys[settings.provider]?.trim());
 
+  const rolePresets = ROLE_PRESETS.filter((p) => p.category === 'role');
+  const actionPresets = ROLE_PRESETS.filter((p) => p.category === 'action');
+
   return (
-    <div className="flex flex-col gap-3 p-3.5">
+    <div className="flex flex-col gap-2.5 p-3.5 select-none">
       {/* 1. Context Badge */}
       <div className="flex items-center justify-between text-xs bg-[#161622] border border-border/60 px-3 py-1.5 rounded-xl shadow-inner">
         <div className="flex items-center gap-2 truncate">
           <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
-          <span className="font-mono text-text-primary text-[11.5px] truncate font-medium">
+          <span className="font-mono text-text-primary text-[11px] truncate font-medium">
             {currentFileName}
           </span>
         </div>
@@ -82,11 +83,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-[11px] text-text-secondary">
-              Selection: <span className="font-mono font-semibold text-emerald-300">{selectedText.length}</span> chars
+              Selected: <span className="font-mono font-semibold text-emerald-300">{selectedText.length}</span> chars
             </span>
           </div>
         ) : (
-          <span className="text-[11px] text-text-muted italic">No selection (target: current line)</span>
+          <span className="text-[10.5px] text-text-muted italic">Highlight bullet points to tailor</span>
         )}
       </div>
 
@@ -107,7 +108,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       )}
 
-      {/* 2. Text Input Area */}
+      {/* 2. Text Input Box */}
       <div className="relative flex flex-col rounded-xl bg-[#14141e] border border-border/70 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/40 transition-all duration-150 shadow-inner">
         <div className="relative flex-1">
           <textarea
@@ -115,17 +116,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             value={prompt}
             onChange={(e) => {
               setPrompt(e.target.value);
-              if (activePreset) setActivePreset(null);
+              if (activeRole) setActiveRole(null);
             }}
             onKeyDown={handleKeyDown}
             placeholder={
               selectedText
-                ? 'Ask WriteTex to rewrite, fix, or improve this selection...'
-                : 'Ask WriteTex anything about your document or LaTeX code...'
+                ? 'Specify target role or instructions (e.g. "Tailor for Senior Staff at Stripe", "Add metrics")...'
+                : 'Select LaTeX resume bullet points, or type custom instructions...'
             }
             rows={2}
             disabled={isGenerating}
-            className="w-full px-3.5 pt-3 pb-2.5 pr-8 bg-transparent text-text-primary placeholder:text-text-muted text-xs resize-none outline-none leading-relaxed"
+            className="w-full px-3.5 pt-2.5 pb-2 pr-8 bg-transparent text-text-primary placeholder:text-text-muted text-xs resize-none outline-none leading-relaxed select-text"
           />
 
           {prompt && (
@@ -133,7 +134,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               type="button"
               onClick={() => {
                 setPrompt('');
-                setActivePreset(null);
+                setActiveRole(null);
               }}
               title="Clear input"
               className="absolute right-2 top-2.5 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"
@@ -144,30 +145,62 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
 
-      {/* 3. Preset Quick Actions Row */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-        {PRESET_PROMPTS.map((preset) => {
-          const isSelected = activePreset === preset.id;
-          return (
+      {/* 3. Role Switcher & Resume Builder Pills */}
+      <div className="flex flex-col gap-1.5 pt-0.5">
+        <div className="flex items-center justify-between px-0.5">
+          <div className="flex items-center gap-2">
             <button
-              key={preset.id}
               type="button"
-              onClick={() => handleSelectPreset(preset.id)}
-              title={preset.description}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap transition-all duration-150 select-none border ${
-                isSelected
-                  ? 'bg-accent border-accent text-white shadow-sm scale-[1.02]'
-                  : 'bg-bg-secondary border-border/50 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary hover:border-border'
+              onClick={() => setActiveTab('roles')}
+              className={`text-[10.5px] font-semibold tracking-wide uppercase flex items-center gap-1 transition-colors ${
+                activeTab === 'roles' ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
               }`}
             >
-              {preset.label}
+              <Briefcase className="w-3 h-3" />
+              <span>Target Role</span>
             </button>
-          );
-        })}
+            <span className="text-text-muted text-[10px]">·</span>
+            <button
+              type="button"
+              onClick={() => setActiveTab('actions')}
+              className={`text-[10.5px] font-semibold tracking-wide uppercase flex items-center gap-1 transition-colors ${
+                activeTab === 'actions' ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
+              }`}
+            >
+              <Wand2 className="w-3 h-3" />
+              <span>Resume Polish</span>
+            </button>
+          </div>
+
+          <span className="text-[9.5px] text-text-muted">Click to auto-tailor</span>
+        </div>
+
+        {/* Horizontal Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          {(activeTab === 'roles' ? rolePresets : actionPresets).map((preset) => {
+            const isSelected = activeRole === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => handleSelectPreset(preset)}
+                title={preset.description}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all duration-150 select-none flex items-center gap-1 border ${
+                  isSelected
+                    ? 'bg-accent border-accent text-white shadow-sm scale-[1.02]'
+                    : 'bg-[#181826] border-border/60 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary hover:border-border'
+                }`}
+              >
+                {preset.icon && <span className="text-[11px]">{preset.icon}</span>}
+                <span>{preset.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* 4. Bottom Toolbar */}
-      <div className="flex items-center justify-between pt-1 gap-2">
+      <div className="flex items-center justify-between pt-1 gap-2 border-t border-border-subtle/60">
         <ModelSelector
           selectedModel={settings.model}
           onSelectModel={onUpdateModel}
@@ -177,7 +210,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <button
             type="button"
             onClick={() => handleSubmit()}
-            disabled={isGenerating || (!prompt.trim() && !activePreset) || !hasApiKey}
+            disabled={isGenerating || (!prompt.trim() && !activeRole) || !hasApiKey}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-accent to-[#8f71ff] hover:from-[#6c48f8] hover:to-[#7f5eff] disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all duration-150 active:scale-95"
           >
             <Sparkles className="w-3.5 h-3.5" />

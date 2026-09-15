@@ -65,10 +65,10 @@ export const App: React.FC = () => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Auto-migrate away from deprecated models on load
+  // Auto-migrate away from deprecated or slow models on load
   useEffect(() => {
-    if (settings.model === 'gemini-2.5-pro') {
-      updateSettings({ model: 'gemini-3.1-pro-preview' });
+    if (settings.model === 'gemini-2.5-pro' || settings.model === 'gemini-3.1-pro-preview') {
+      updateSettings({ model: 'gemini-3.8-flash' });
     }
   }, [settings.model, updateSettings]);
 
@@ -118,11 +118,11 @@ export const App: React.FC = () => {
       setActiveView('diff');
     } else if (aiStatus === 'error') {
       if (aiError) {
-        if (aiError.includes('gemini-2.5-pro') || aiError.includes('gemini-3.1-pro-preview')) {
+        if (aiError.includes('gemini-2.5-pro') || aiError.includes('gemini-3.1-pro-preview') || aiError.includes('no longer available')) {
           addToast('error', aiError, {
-            label: 'Switch to Gemini 3.1 Pro Preview',
+            label: 'Switch to Gemini 3.8 Flash (Ultra-fast)',
             onClick: () => {
-              updateSettings({ provider: 'gemini', model: 'gemini-3.1-pro-preview' });
+              updateSettings({ provider: 'gemini', model: 'gemini-3.8-flash' });
             },
           });
         } else if (aiError.toLowerCase().includes('api key')) {
