@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FloatingButton } from './components/FloatingButton';
 import { Panel } from './components/Panel';
-import { ChatInput } from './components/ChatInput';
+import { ChatInput, HistoryItem } from './components/ChatInput';
 import { StreamingView } from './components/StreamingView';
 import { DiffView } from './components/DiffView';
 import { EditView } from './components/EditView';
@@ -12,6 +12,7 @@ import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
 import { usePanelPosition } from './hooks/usePanelPosition';
 import { applyFuzzyPatch } from '../diff/apply';
+import { DiffResult } from '../diff/types';
 
 export type AppView = 'input' | 'streaming' | 'diff' | 'edit' | 'settings';
 
@@ -21,6 +22,7 @@ export const App: React.FC = () => {
   const [lastPrompt, setLastPrompt] = useState<string>('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isApplying, setIsApplying] = useState<boolean>(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const {
     isEditorReady,
@@ -48,6 +50,7 @@ export const App: React.FC = () => {
     generate,
     stop,
     reset,
+    setDiffResult,
   } = useAI(settings);
 
   const { position, handleMouseDown } = usePanelPosition();
@@ -67,10 +70,31 @@ export const App: React.FC = () => {
 
   // Auto-migrate away from deprecated or slow models on load
   useEffect(() => {
-    if (settings.model === 'gemini-2.5-pro' || settings.model === 'gemini-3.1-pro-preview') {
+    if (
+      !settings.model ||
+      settings.model === 'gemini-2.5-pro' ||
+      settings.model === 'gemini-3.1-pro-preview' ||
+      settings.model.startsWith('models/')
+    ) {
       updateSettings({ model: 'gemini-3.8-flash' });
     }
   }, [settings.model, updateSettings]);
+
+  // Record completed responses into history
+  useEffect(() => {
+    if (aiStatus === 'done' && streamedText) {
+      setHistory((prev) => [
+        ...prev,
+        {
+          id: `hist_${Date.now()}`,
+          userPrompt: lastPrompt,
+          response: streamedText,
+          diffResult,
+          timestamp: Date.now(),
+        },
+      ]);
+    }
+  }, [aiStatus, streamedText, lastPrompt, diffResult]);
 
   // Listen for global shortcut message from service worker
   useEffect(() => {
@@ -100,6 +124,8 @@ export const App: React.FC = () => {
           setActiveView('input');
         } else if (activeView === 'edit') {
           setActiveView('diff');
+        } else if (activeView === 'streaming') {
+          handleStop();
         } else {
           setIsOpen(false);
         }
@@ -114,11 +140,23 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (aiStatus === 'streaming') {
       setActiveView('streaming');
-    } else if (aiStatus === 'done' && diffResult && diffResult.hasChanges) {
-      setActiveView('diff');
+    } else if (aiStatus === 'done') {
+      if (diffResult && diffResult.hasChanges) {
+        setActiveView('diff');
+      } else {
+        setActiveView('input');
+      }
+    } else if (aiStatus === 'idle') {
+      if (activeView === 'streaming') {
+        setActiveView('input');
+      }
     } else if (aiStatus === 'error') {
       if (aiError) {
-        if (aiError.includes('gemini-2.5-pro') || aiError.includes('gemini-3.1-pro-preview') || aiError.includes('no longer available')) {
+        if (
+          aiError.includes('gemini-2.5-pro') ||
+          aiError.includes('gemini-3.1-pro-preview') ||
+          aiError.includes('no longer available')
+        ) {
           addToast('error', aiError, {
             label: 'Switch to Gemini 3.8 Flash (Ultra-fast)',
             onClick: () => {
@@ -137,6 +175,12 @@ export const App: React.FC = () => {
       setActiveView('input');
     }
   }, [aiStatus, diffResult, aiError, addToast, updateSettings]);
+
+  const handleStop = () => {
+    stop();
+    setActiveView('input');
+    addToast('info', 'Generation stopped.');
+  };
 
   const handleGenerate = async (prompt: string, presetKey?: string) => {
     setLastPrompt(prompt);
@@ -235,7 +279,15 @@ export const App: React.FC = () => {
             onUpdateModel={(provider, model) => updateSettings({ provider, model })}
             onGenerate={handleGenerate}
             isGenerating={aiStatus === 'streaming'}
+            onStop={handleStop}
             onOpenSettings={() => setActiveView('settings')}
+            history={history}
+            onViewDiff={(diff: DiffResult) => {
+              setDiffResult(diff);
+              setActiveView('diff');
+            }}
+            onApplyDirect={(text: string) => handleApplyChanges(text)}
+            onClearHistory={() => setHistory([])}
           />
         )}
 
@@ -244,7 +296,7 @@ export const App: React.FC = () => {
             currentFileName={currentFileName}
             userPrompt={lastPrompt}
             streamedText={streamedText}
-            onStop={() => stop()}
+            onStop={handleStop}
           />
         )}
 

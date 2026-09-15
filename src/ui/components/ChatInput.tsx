@@ -1,9 +1,32 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, FileText, Zap, X, Briefcase, Wand2 } from 'lucide-react';
+import {
+  Sparkles,
+  FileText,
+  Zap,
+  X,
+  Briefcase,
+  Wand2,
+  Clock,
+  Copy,
+  Check,
+  GitCompare,
+  ArrowUpRight,
+  Square,
+} from 'lucide-react';
 import { ROLE_PRESETS, RolePreset } from '../../prompts/presets';
 import { ModelSelector } from './ModelSelector';
 import { Settings, AIProviderId } from '../../messaging/types';
 import { KeyboardShortcutHint } from './KeyboardShortcutHint';
+import { DiffResult } from '../../diff/types';
+
+export interface HistoryItem {
+  id: string;
+  userPrompt: string;
+  targetRole?: string;
+  response: string;
+  diffResult?: DiffResult | null;
+  timestamp: number;
+}
 
 interface ChatInputProps {
   selectedText: string;
@@ -12,7 +35,12 @@ interface ChatInputProps {
   onUpdateModel: (provider: AIProviderId, model: string) => void;
   onGenerate: (prompt: string, presetKey?: string) => void;
   isGenerating: boolean;
+  onStop?: () => void;
   onOpenSettings: () => void;
+  history?: HistoryItem[];
+  onViewDiff?: (diff: DiffResult) => void;
+  onApplyDirect?: (text: string) => void;
+  onClearHistory?: () => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -22,20 +50,35 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onUpdateModel,
   onGenerate,
   isGenerating,
+  onStop,
   onOpenSettings,
+  history = [],
+  onViewDiff,
+  onApplyDirect,
+  onClearHistory,
 }) => {
   const [prompt, setPrompt] = useState('');
   const [activeRole, setActiveRole] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'roles' | 'actions'>('roles');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const historyContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 130)}px`;
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [prompt]);
+
+  // Scroll to bottom of history on new message
+  useEffect(() => {
+    if (historyContainerRef.current) {
+      historyContainerRef.current.scrollTop = historyContainerRef.current.scrollHeight;
+    }
+  }, [history.length]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -44,12 +87,38 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
     const finalPrompt = query || (ROLE_PRESETS.find((p) => p.id === activeRole)?.userPrompt ?? '');
     onGenerate(finalPrompt, activeRole || undefined);
+    setPrompt('');
+    setHistoryIndex(-1);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
       handleSubmit();
+      return;
+    }
+
+    // Arrow up to recall past prompt
+    if (e.key === 'ArrowUp' && (prompt === '' || historyIndex !== -1) && history.length > 0) {
+      e.preventDefault();
+      const nextIdx = Math.min(historyIndex + 1, history.length - 1);
+      setHistoryIndex(nextIdx);
+      const past = history[history.length - 1 - nextIdx];
+      if (past) {
+        setPrompt(past.userPrompt);
+      }
+    } else if (e.key === 'ArrowDown' && historyIndex > -1) {
+      e.preventDefault();
+      const nextIdx = historyIndex - 1;
+      setHistoryIndex(nextIdx);
+      if (nextIdx === -1) {
+        setPrompt('');
+      } else {
+        const past = history[history.length - 1 - nextIdx];
+        if (past) {
+          setPrompt(past.userPrompt);
+        }
+      }
     }
   };
 
@@ -63,15 +132,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
+  const handleCopy = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   const hasApiKey = Boolean(settings.apiKeys[settings.provider]?.trim());
 
   const rolePresets = ROLE_PRESETS.filter((p) => p.category === 'role');
   const actionPresets = ROLE_PRESETS.filter((p) => p.category === 'action');
 
   return (
-    <div className="flex flex-col gap-2.5 p-3.5 select-none">
+    <div className="flex flex-col gap-2.5 p-3.5 select-none max-h-[560px]">
       {/* 1. Context Badge */}
-      <div className="flex items-center justify-between text-xs bg-[#161622] border border-border/60 px-3 py-1.5 rounded-xl shadow-inner">
+      <div className="flex items-center justify-between text-xs bg-[#161622] border border-border/60 px-3 py-1.5 rounded-xl shadow-inner shrink-0">
         <div className="flex items-center gap-2 truncate">
           <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
           <span className="font-mono text-text-primary text-[11px] truncate font-medium">
@@ -93,7 +168,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
       {/* API Key Alert if missing */}
       {!hasApiKey && (
-        <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-950/40 border border-amber-800/60 text-xs text-amber-200">
+        <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-950/40 border border-amber-800/60 text-xs text-amber-200 shrink-0">
           <div className="flex items-center gap-2">
             <Zap className="w-4 h-4 text-amber-400 shrink-0" />
             <span>Missing {settings.provider.toUpperCase()} API key</span>
@@ -108,8 +183,97 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       )}
 
-      {/* 2. Text Input Box */}
-      <div className="relative flex flex-col rounded-xl bg-[#14141e] border border-border/70 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/40 transition-all duration-150 shadow-inner">
+      {/* 2. Scrollable Past Requests / History Thread */}
+      {history.length > 0 && (
+        <div className="flex flex-col gap-2 max-h-[175px] overflow-y-auto pr-1 no-scrollbar border-b border-border-subtle/70 pb-2">
+          <div className="flex items-center justify-between px-1 text-[10px] text-text-muted font-semibold uppercase tracking-wider sticky top-0 bg-[#171724]/95 backdrop-blur-sm z-10 py-0.5">
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              Past Requests ({history.length})
+            </span>
+            {onClearHistory && (
+              <button
+                type="button"
+                onClick={onClearHistory}
+                className="hover:text-text-primary text-[9.5px] hover:underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {history.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-[#13131f] border border-border/70 text-xs"
+            >
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-semibold text-text-primary text-[11px] truncate flex-1">
+                  {item.userPrompt}
+                </span>
+                <span className="text-[9px] font-mono text-text-muted shrink-0">
+                  {new Date(item.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+
+              <div className="font-mono text-[10.5px] text-text-secondary bg-[#0e0e16] p-2 rounded-lg line-clamp-3 select-text whitespace-pre-wrap">
+                {item.response}
+              </div>
+
+              <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPrompt(item.userPrompt)}
+                  className="px-2 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-text-muted hover:text-white flex items-center gap-1"
+                >
+                  <ArrowUpRight className="w-2.5 h-2.5" />
+                  <span>Reuse</span>
+                </button>
+
+                {item.diffResult && onViewDiff && (
+                  <button
+                    type="button"
+                    onClick={() => onViewDiff(item.diffResult!)}
+                    className="px-2 py-0.5 rounded text-[10px] bg-accent/20 hover:bg-accent/30 text-accent font-medium flex items-center gap-1"
+                  >
+                    <GitCompare className="w-2.5 h-2.5" />
+                    <span>Diff</span>
+                  </button>
+                )}
+
+                {onApplyDirect && (
+                  <button
+                    type="button"
+                    onClick={() => onApplyDirect(item.response)}
+                    className="px-2 py-0.5 rounded text-[10px] bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 font-medium border border-emerald-800/40"
+                  >
+                    Apply
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleCopy(item.id, item.response)}
+                  className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-text-muted hover:text-white"
+                  title="Copy to clipboard"
+                >
+                  {copiedId === item.id ? (
+                    <Check className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3 h-3" />
+                  )}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 3. Text Input Box */}
+      <div className="relative flex flex-col rounded-xl bg-[#14141e] border border-border/70 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/40 transition-all duration-150 shadow-inner shrink-0">
         <div className="relative flex-1">
           <textarea
             ref={textareaRef}
@@ -145,8 +309,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
 
-      {/* 3. Role Switcher & Resume Builder Pills */}
-      <div className="flex flex-col gap-1.5 pt-0.5">
+      {/* 4. Role Switcher & Resume Builder Pills */}
+      <div className="flex flex-col gap-1.5 pt-0.5 shrink-0">
         <div className="flex items-center justify-between px-0.5">
           <div className="flex items-center gap-2">
             <button
@@ -199,24 +363,35 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
 
-      {/* 4. Bottom Toolbar */}
-      <div className="flex items-center justify-between pt-1 gap-2 border-t border-border-subtle/60">
-        <ModelSelector
-          selectedModel={settings.model}
-          onSelectModel={onUpdateModel}
-        />
+      {/* 5. Bottom Toolbar */}
+      <div className="flex items-center justify-between pt-1 gap-2 border-t border-border-subtle/60 shrink-0">
+        <ModelSelector selectedModel={settings.model} onSelectModel={onUpdateModel} />
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleSubmit()}
-            disabled={isGenerating || (!prompt.trim() && !activeRole) || !hasApiKey}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-accent to-[#8f71ff] hover:from-[#6c48f8] hover:to-[#7f5eff] disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all duration-150 active:scale-95"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Generate</span>
-            <KeyboardShortcutHint shortcut="Ctrl+Enter" className="ml-1 opacity-75 hidden sm:inline-flex" />
-          </button>
+          {isGenerating ? (
+            <button
+              type="button"
+              onClick={onStop}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-red-200 bg-red-950/60 hover:bg-red-900 border border-red-800/60 shadow-md transition-all duration-150 active:scale-95 animate-pulse"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+              <span>Stop</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleSubmit()}
+              disabled={(!prompt.trim() && !activeRole) || !hasApiKey}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-accent to-[#8f71ff] hover:from-[#6c48f8] hover:to-[#7f5eff] disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all duration-150 active:scale-95"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Generate</span>
+              <KeyboardShortcutHint
+                shortcut="Ctrl+Enter"
+                className="ml-1 opacity-75 hidden sm:inline-flex"
+              />
+            </button>
+          )}
         </div>
       </div>
     </div>

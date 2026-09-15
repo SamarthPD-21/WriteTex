@@ -84,7 +84,7 @@ export function useAI(settings: Settings) {
       cancelFnRef.current();
       cancelFnRef.current = null;
     }
-    setStatus('done');
+    setStatus('idle');
   }, []);
 
   const reset = useCallback(() => {

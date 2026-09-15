@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WriteTex — AI Copilot for LaTeX",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI copilot for LaTeX and academic writing. Understands, edits, and improves papers directly in Overleaf.",
   "icons": {
     "16": "icons/icon-16.png",

@@ -5,7 +5,8 @@ export async function* streamGemini(
   model: string,
   systemPrompt: string,
   userPrompt: string,
-  temperature = 0.2
+  temperature = 0.2,
+  signal?: AbortSignal
 ): AsyncGenerator<string> {
   const cleanModel = model.replace(/^models\//, '').trim();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:streamGenerateContent?alt=sse&key=${apiKey}`;
@@ -27,6 +28,7 @@ export async function* streamGemini(
 
   const response = await fetch(url, {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
     },
@@ -46,9 +48,13 @@ export async function* streamGemini(
     throw new Error(errMsg);
   }
 
-  yield* parseSseStream(response, (data) => {
-    return data.candidates?.[0]?.content?.parts?.[0]?.text;
-  });
+  yield* parseSseStream(
+    response,
+    (data) => {
+      return data.candidates?.[0]?.content?.parts?.[0]?.text;
+    },
+    signal
+  );
 }
 
 export async function validateGeminiKey(apiKey: string): Promise<boolean> {

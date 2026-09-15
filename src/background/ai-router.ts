@@ -6,7 +6,10 @@ import { streamGemini } from './providers/gemini';
 import { streamOpenAI } from './providers/openai';
 import { streamAnthropic } from './providers/anthropic';
 
-export async function* routeAndStreamAI(request: GenerateRequest): AsyncGenerator<string> {
+export async function* routeAndStreamAI(
+  request: GenerateRequest,
+  signal?: AbortSignal
+): AsyncGenerator<string> {
   const settings = await getStoredSettings();
 
   const provider = request.provider || settings.provider;
@@ -32,7 +35,7 @@ export async function* routeAndStreamAI(request: GenerateRequest): AsyncGenerato
       stream = streamMeta(apiKey, model, systemPrompt, userPrompt, request.temperature);
       break;
     case 'gemini':
-      stream = streamGemini(apiKey, model, systemPrompt, userPrompt, request.temperature);
+      stream = streamGemini(apiKey, model, systemPrompt, userPrompt, request.temperature, signal);
       break;
     case 'openai':
       stream = streamOpenAI(apiKey, model, systemPrompt, userPrompt, request.temperature);

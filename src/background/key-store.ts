@@ -11,12 +11,24 @@ export async function getStoredSettings(): Promise<Settings> {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       const data = await chrome.storage.local.get(STORAGE_KEY);
       if (data && data[STORAGE_KEY]) {
+        const stored = data[STORAGE_KEY];
+        // Automatically migrate deprecated or slow models to gemini-3.8-flash
+        if (
+          !stored.model ||
+          stored.model === 'gemini-2.5-pro' ||
+          stored.model === 'gemini-3.1-pro-preview' ||
+          stored.model.startsWith('models/')
+        ) {
+          stored.model = 'gemini-3.8-flash';
+          await chrome.storage.local.set({ [STORAGE_KEY]: stored });
+        }
+
         return {
           ...DEFAULT_SETTINGS,
-          ...data[STORAGE_KEY],
+          ...stored,
           apiKeys: {
             ...DEFAULT_SETTINGS.apiKeys,
-            ...(data[STORAGE_KEY].apiKeys || {}),
+            ...(stored.apiKeys || {}),
           },
         };
       }

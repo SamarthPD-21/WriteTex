@@ -44,6 +44,9 @@ export const Panel: React.FC<PanelProps> = ({
             <Sparkles className="w-3.5 h-3.5" />
           </div>
           <span className="font-bold text-xs tracking-wide text-white">WriteTex</span>
+          <span className="text-[9px] font-mono px-1.5 py-0.5 bg-white/10 text-white/70 rounded-md font-semibold">
+            v0.2.0
+          </span>
 
           <div
             className="flex items-center gap-1.5 px-2 py-0.5 bg-bg-tertiary/70 border border-border-subtle rounded-md text-[10px] text-text-secondary"

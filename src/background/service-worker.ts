@@ -34,7 +34,7 @@ chrome.runtime.onConnect.addListener((port) => {
       let accumulated = '';
 
       try {
-        const stream = routeAndStreamAI(msg.request);
+        const stream = routeAndStreamAI(msg.request, abortController.signal);
 
         for await (const chunk of stream) {
           if (abortController.signal.aborted) {

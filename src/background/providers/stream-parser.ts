@@ -3,7 +3,8 @@
  */
 export async function* parseSseStream(
   response: Response,
-  extractDelta: (parsedJson: any) => string | undefined
+  extractDelta: (parsedJson: any) => string | undefined,
+  signal?: AbortSignal
 ): AsyncGenerator<string> {
   if (!response.body) {
     throw new Error('Response body is empty');
@@ -15,6 +16,15 @@ export async function* parseSseStream(
 
   try {
     while (true) {
+      if (signal?.aborted) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Ignore
+        }
+        break;
+      }
+
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -24,6 +34,8 @@ export async function* parseSseStream(
       buffer = lines.pop() || '';
 
       for (const line of lines) {
+        if (signal?.aborted) break;
+
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith(':')) {
           continue; // SSE comment or ping
@@ -48,8 +60,8 @@ export async function* parseSseStream(
       }
     }
 
-    // Process remainder if any
-    if (buffer.trim().startsWith('data:')) {
+    // Process remainder if not aborted
+    if (!signal?.aborted && buffer.trim().startsWith('data:')) {
       const dataStr = buffer.trim().slice(5).trim();
       if (dataStr && dataStr !== '[DONE]') {
         try {
@@ -64,6 +76,10 @@ export async function* parseSseStream(
       }
     }
   } finally {
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch {
+      // Ignore
+    }
   }
 }
