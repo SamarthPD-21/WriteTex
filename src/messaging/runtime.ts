@@ -12,16 +12,24 @@ import {
  */
 export async function getSettingsFromBackground(): Promise<Settings> {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(
-      { type: 'WRITETEX_GET_SETTINGS' } as RuntimeMessage,
-      (response) => {
-        if (response?.settings) {
-          resolve(response.settings);
-        } else {
-          resolve(DEFAULT_SETTINGS);
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'WRITETEX_GET_SETTINGS' } as RuntimeMessage,
+        (response) => {
+          if (chrome.runtime.lastError) {
+            resolve(DEFAULT_SETTINGS);
+            return;
+          }
+          if (response?.settings) {
+            resolve(response.settings);
+          } else {
+            resolve(DEFAULT_SETTINGS);
+          }
         }
-      }
-    );
+      );
+    } catch {
+      resolve(DEFAULT_SETTINGS);
+    }
   });
 }
 
@@ -30,12 +38,19 @@ export async function getSettingsFromBackground(): Promise<Settings> {
  */
 export async function saveSettingsToBackground(settings: Partial<Settings>): Promise<Settings> {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(
-      { type: 'WRITETEX_SAVE_SETTINGS', payload: settings } as RuntimeMessage,
-      (response) => {
-        resolve(response?.settings);
-      }
-    );
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'WRITETEX_SAVE_SETTINGS', payload: settings } as RuntimeMessage,
+        (response) => {
+          if (chrome.runtime.lastError) {
+            // Ignore error
+          }
+          resolve(response?.settings || DEFAULT_SETTINGS);
+        }
+      );
+    } catch {
+      resolve(DEFAULT_SETTINGS);
+    }
   });
 }
 
@@ -47,12 +62,20 @@ export async function validateKeyViaBackground(
   apiKey: string
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(
-      { type: 'WRITETEX_VALIDATE_KEY', payload: { provider, apiKey } } as RuntimeMessage,
-      (response) => {
-        resolve(Boolean(response?.valid));
-      }
-    );
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'WRITETEX_VALIDATE_KEY', payload: { provider, apiKey } } as RuntimeMessage,
+        (response) => {
+          if (chrome.runtime.lastError) {
+            resolve(false);
+            return;
+          }
+          resolve(Boolean(response?.valid));
+        }
+      );
+    } catch {
+      resolve(false);
+    }
   });
 }
 
@@ -66,17 +89,32 @@ export function streamGenerationFromBackground(
   onDone: (fullText: string) => void,
   onError: (error: string) => void
 ): () => void {
-  const port = chrome.runtime.connect({ name: 'WRITETEX_STREAM' });
+  let port: chrome.runtime.Port | null = null;
+
+  try {
+    port = chrome.runtime.connect({ name: 'WRITETEX_STREAM' });
+  } catch (err: unknown) {
+    onError(err instanceof Error ? err.message : 'Failed to connect to background service worker');
+    return () => {};
+  }
 
   port.onMessage.addListener((event: StreamEvent) => {
     if (event.type === 'chunk') {
       onChunk(event.text);
     } else if (event.type === 'done') {
       onDone(event.fullText);
-      port.disconnect();
+      try {
+        port?.disconnect();
+      } catch {
+        // Ignore
+      }
     } else if (event.type === 'error') {
       onError(event.error);
-      port.disconnect();
+      try {
+        port?.disconnect();
+      } catch {
+        // Ignore
+      }
     }
   });
 
@@ -87,12 +125,18 @@ export function streamGenerationFromBackground(
   });
 
   // Start the generation
-  port.postMessage({ type: 'START_GENERATE', request });
+  try {
+    port.postMessage({ type: 'START_GENERATE', request });
+  } catch (err: unknown) {
+    onError(err instanceof Error ? err.message : 'Failed to send generate request to background');
+  }
 
   return () => {
     try {
-      port.postMessage({ type: 'CANCEL', requestId: request.requestId });
-      port.disconnect();
+      if (port) {
+        port.postMessage({ type: 'CANCEL', requestId: request.requestId });
+        port.disconnect();
+      }
     } catch {
       // Ignore
     }
