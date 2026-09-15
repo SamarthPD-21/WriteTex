@@ -32,6 +32,14 @@
   background: #5d5d85;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Blinking cursor for streaming */
 @keyframes wt-cursor-blink {
   0%, 100% { opacity: 1; }

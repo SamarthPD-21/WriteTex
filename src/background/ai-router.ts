@@ -1,6 +1,7 @@
 import { GenerateRequest } from '../messaging/types';
 import { getStoredSettings } from './key-store';
 import { buildPrompt } from '../prompts/builder';
+import { streamMeta } from './providers/meta';
 import { streamGemini } from './providers/gemini';
 import { streamOpenAI } from './providers/openai';
 import { streamAnthropic } from './providers/anthropic';
@@ -27,6 +28,9 @@ export async function* routeAndStreamAI(request: GenerateRequest): AsyncGenerato
   let stream: AsyncGenerator<string>;
 
   switch (provider) {
+    case 'meta':
+      stream = streamMeta(apiKey, model, systemPrompt, userPrompt, request.temperature);
+      break;
     case 'gemini':
       stream = streamGemini(apiKey, model, systemPrompt, userPrompt, request.temperature);
       break;

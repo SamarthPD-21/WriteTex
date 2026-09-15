@@ -1,22 +1,26 @@
-export type AIProviderId = 'gemini' | 'openai' | 'anthropic';
+export type AIProviderId = 'meta' | 'gemini' | 'openai' | 'anthropic';
+
+export type ModelBadge = 'Fast' | 'Best' | 'Latest' | 'Efficient' | 'Reasoning';
 
 export interface ModelInfo {
   id: string;
   name: string;
   provider: AIProviderId;
   description?: string;
-  badge?: 'Fast' | 'Best' | 'Latest';
+  badge?: ModelBadge;
   recommended?: boolean;
 }
 
 export interface Settings {
   provider: AIProviderId;
   apiKeys: {
+    meta: string;
     gemini: string;
     openai: string;
     anthropic: string;
   };
   model: string;
+  customModelId?: string;
   temperature: number;
   contextScope: 'selection' | 'file';
   autoCollapseOnApply: boolean;
@@ -25,38 +29,85 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   provider: 'gemini',
   apiKeys: {
+    meta: '',
     gemini: '',
     openai: '',
     anthropic: '',
   },
-  model: 'gemini-2.5-pro',
+  model: 'gemini-3.1-pro-preview',
+  customModelId: '',
   temperature: 0.2,
   contextScope: 'selection',
   autoCollapseOnApply: false,
 };
 
 export const AVAILABLE_MODELS: Record<AIProviderId, ModelInfo[]> = {
+  meta: [
+    {
+      id: 'muse-spark-1.3',
+      name: 'Meta Spark 1.3',
+      provider: 'meta',
+      badge: 'Latest',
+      recommended: true,
+      description: 'Meta Superintelligence flagship. 1M context, 25% fewer tokens, agentic.',
+    },
+    {
+      id: 'muse-spark-1.2',
+      name: 'Meta Spark 1.2',
+      provider: 'meta',
+      badge: 'Fast',
+      description: 'Optimized for high-speed technical writing, editing, and code.',
+    },
+    {
+      id: 'muse-spark-1.3-contributor',
+      name: 'Meta Spark 1.3 (Contributor)',
+      provider: 'meta',
+      badge: 'Reasoning',
+      description: 'High-reasoning effort variant for complex mathematical derivations.',
+    },
+    {
+      id: 'llama-3.3-70b-instruct',
+      name: 'Llama 3.3 70B',
+      provider: 'meta',
+      badge: 'Efficient',
+      description: 'Fast, highly efficient open foundation model for academic text.',
+    },
+  ],
   gemini: [
     {
-      id: 'gemini-2.5-pro',
-      name: 'Gemini 2.5 Pro',
+      id: 'gemini-3.1-pro-preview',
+      name: 'Gemini 3.1 Pro Preview',
       provider: 'gemini',
-      badge: 'Best',
+      badge: 'Latest',
       recommended: true,
-      description: 'Excels at complex academic writing and LaTeX reasoning',
+      description: 'Latest Google flagship model with advanced LaTeX reasoning.',
     },
     {
       id: 'gemini-2.5-flash',
       name: 'Gemini 2.5 Flash',
       provider: 'gemini',
       badge: 'Fast',
-      description: 'Ultra-fast latency for real-time phrasing and fixes',
+      description: 'Ultra-fast latency for real-time phrasing and fixes.',
+    },
+    {
+      id: 'gemini-2.0-flash',
+      name: 'Gemini 2.0 Flash',
+      provider: 'gemini',
+      badge: 'Efficient',
+      description: 'Balanced speed and precision for iterative paper drafting.',
+    },
+    {
+      id: 'gemini-2.0-flash-lite',
+      name: 'Gemini 2.0 Flash Lite',
+      provider: 'gemini',
+      badge: 'Fast',
+      description: 'Extremely lightweight with near-instant token generation.',
     },
     {
       id: 'gemini-1.5-pro',
       name: 'Gemini 1.5 Pro',
       provider: 'gemini',
-      description: 'Strong foundation model with long context window',
+      description: 'Long-context model suitable for whole-paper analysis.',
     },
   ],
   openai: [
@@ -66,21 +117,21 @@ export const AVAILABLE_MODELS: Record<AIProviderId, ModelInfo[]> = {
       provider: 'openai',
       badge: 'Best',
       recommended: true,
-      description: 'High-capability flagship model for text and math',
+      description: 'High-capability flagship model for text and math.',
     },
     {
       id: 'gpt-4o-mini',
       name: 'GPT-4o mini',
       provider: 'openai',
-      badge: 'Fast',
-      description: 'Lightweight and fast for targeted text edits',
+      badge: 'Efficient',
+      description: 'Cost-effective and fast for paper polishing.',
     },
     {
       id: 'o3-mini',
       name: 'o3-mini',
       provider: 'openai',
-      badge: 'Latest',
-      description: 'Advanced reasoning for technical and mathematical LaTeX',
+      badge: 'Reasoning',
+      description: 'Advanced STEM reasoning for mathematics and equations.',
     },
   ],
   anthropic: [
@@ -90,21 +141,21 @@ export const AVAILABLE_MODELS: Record<AIProviderId, ModelInfo[]> = {
       provider: 'anthropic',
       badge: 'Latest',
       recommended: true,
-      description: 'Top-tier academic prose quality and LaTeX precision',
+      description: 'Top-tier academic prose quality and hybrid reasoning.',
+    },
+    {
+      id: 'claude-3-5-haiku-20241022',
+      name: 'Claude 3.5 Haiku',
+      provider: 'anthropic',
+      badge: 'Efficient',
+      description: 'Ultra-fast latency for grammar, vocabulary, and conciseness.',
     },
     {
       id: 'claude-3-5-sonnet-20241022',
       name: 'Claude 3.5 Sonnet',
       provider: 'anthropic',
       badge: 'Best',
-      description: 'High precision and nuanced academic vocabulary',
-    },
-    {
-      id: 'claude-3-5-haiku-20241022',
-      name: 'Claude 3.5 Haiku',
-      provider: 'anthropic',
-      badge: 'Fast',
-      description: 'Fast response times for grammar and tone adjustments',
+      description: 'High precision and nuanced academic vocabulary.',
     },
   ],
 };

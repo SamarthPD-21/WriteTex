@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, Settings, AIProviderId } from '../messaging/types';
+import { validateMetaKey } from './providers/meta';
 import { validateGeminiKey } from './providers/gemini';
 import { validateOpenAIKey } from './providers/openai';
 import { validateAnthropicKey } from './providers/anthropic';
@@ -57,6 +58,8 @@ export async function validateProviderKey(
   }
 
   switch (provider) {
+    case 'meta':
+      return validateMetaKey(apiKey.trim());
     case 'gemini':
       return validateGeminiKey(apiKey.trim());
     case 'openai':

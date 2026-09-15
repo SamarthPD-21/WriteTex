@@ -4,6 +4,7 @@ import {
   Settings,
   StreamEvent,
   AIProviderId,
+  DEFAULT_SETTINGS,
 } from './types';
 
 /**
@@ -17,14 +18,7 @@ export async function getSettingsFromBackground(): Promise<Settings> {
         if (response?.settings) {
           resolve(response.settings);
         } else {
-          resolve({
-            provider: 'gemini',
-            apiKeys: { gemini: '', openai: '', anthropic: '' },
-            model: 'gemini-2.5-pro',
-            temperature: 0.2,
-            contextScope: 'selection',
-            autoCollapseOnApply: false,
-          });
+          resolve(DEFAULT_SETTINGS);
         }
       }
     );

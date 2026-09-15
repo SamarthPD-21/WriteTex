@@ -6,7 +6,7 @@ import { StreamingView } from './components/StreamingView';
 import { DiffView } from './components/DiffView';
 import { EditView } from './components/EditView';
 import { SettingsView } from './components/SettingsView';
-import { Toast, ToastMessage } from './components/Toast';
+import { Toast, ToastMessage, ToastAction } from './components/Toast';
 import { useEditor } from './hooks/useEditor';
 import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
@@ -23,6 +23,7 @@ export const App: React.FC = () => {
   const [isApplying, setIsApplying] = useState<boolean>(false);
 
   const {
+    isEditorReady,
     selectedText,
     currentFileName,
     selectionRange,
@@ -51,18 +52,25 @@ export const App: React.FC = () => {
 
   const { position, handleMouseDown } = usePanelPosition();
 
-  const addToast = useCallback((type: ToastMessage['type'], text: string) => {
+  const addToast = useCallback((type: ToastMessage['type'], text: string, action?: ToastAction) => {
     const id = `toast_${Date.now()}_${Math.random()}`;
-    setToasts((prev) => [...prev, { id, type, text }]);
+    setToasts((prev) => [...prev, { id, type, text, action }]);
 
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+    }, action ? 8000 : 4500);
   }, []);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Auto-migrate away from deprecated models on load
+  useEffect(() => {
+    if (settings.model === 'gemini-2.5-pro') {
+      updateSettings({ model: 'gemini-3.1-pro-preview' });
+    }
+  }, [settings.model, updateSettings]);
 
   // Listen for global shortcut message from service worker
   useEffect(() => {
@@ -102,7 +110,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, activeView]);
 
-  // Sync AI state with active view
+  // Sync AI state with active view & handle smart error recovery
   useEffect(() => {
     if (aiStatus === 'streaming') {
       setActiveView('streaming');
@@ -110,11 +118,25 @@ export const App: React.FC = () => {
       setActiveView('diff');
     } else if (aiStatus === 'error') {
       if (aiError) {
-        addToast('error', aiError);
+        if (aiError.includes('gemini-2.5-pro') || aiError.includes('gemini-3.1-pro-preview')) {
+          addToast('error', aiError, {
+            label: 'Switch to Gemini 3.1 Pro Preview',
+            onClick: () => {
+              updateSettings({ provider: 'gemini', model: 'gemini-3.1-pro-preview' });
+            },
+          });
+        } else if (aiError.toLowerCase().includes('api key')) {
+          addToast('error', aiError, {
+            label: 'Open Settings',
+            onClick: () => setActiveView('settings'),
+          });
+        } else {
+          addToast('error', aiError);
+        }
       }
       setActiveView('input');
     }
-  }, [aiStatus, diffResult, aiError, addToast]);
+  }, [aiStatus, diffResult, aiError, addToast, updateSettings]);
 
   const handleGenerate = async (prompt: string, presetKey?: string) => {
     setLastPrompt(prompt);
@@ -201,6 +223,7 @@ export const App: React.FC = () => {
         onToggleSettings={() => setActiveView(activeView === 'settings' ? 'input' : 'settings')}
         onMinimize={() => setIsOpen(false)}
         onClose={() => setIsOpen(false)}
+        isEditorConnected={isEditorReady}
       >
         <Toast toasts={toasts} onDismiss={dismissToast} />
 
@@ -209,7 +232,7 @@ export const App: React.FC = () => {
             selectedText={selectedText}
             currentFileName={currentFileName}
             settings={settings}
-            onUpdateModel={(model) => updateSettings({ model })}
+            onUpdateModel={(provider, model) => updateSettings({ provider, model })}
             onGenerate={handleGenerate}
             isGenerating={aiStatus === 'streaming'}
             onOpenSettings={() => setActiveView('settings')}

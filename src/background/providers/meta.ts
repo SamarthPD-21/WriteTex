@@ -1,40 +1,41 @@
 import { parseSseStream } from './stream-parser';
 
-export async function* streamGemini(
+export async function* streamMeta(
   apiKey: string,
   model: string,
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.2
 ): AsyncGenerator<string> {
-  const cleanModel = model.replace(/^models\//, '').trim();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const url = 'https://api.meta.ai/v1/chat/completions';
 
-  const payload = {
-    contents: [
+  const payload: Record<string, any> = {
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: systemPrompt,
+      },
       {
         role: 'user',
-        parts: [{ text: userPrompt }],
+        content: userPrompt,
       },
     ],
-    systemInstruction: {
-      parts: [{ text: systemPrompt }],
-    },
-    generationConfig: {
-      temperature,
-    },
+    temperature,
+    stream: true,
   };
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    let errMsg = `Gemini API error: HTTP ${response.status}`;
+    let errMsg = `Meta Model API error: HTTP ${response.status}`;
     try {
       const errorJson = await response.json();
       if (errorJson?.error?.message) {
@@ -47,15 +48,17 @@ export async function* streamGemini(
   }
 
   yield* parseSseStream(response, (data) => {
-    return data.candidates?.[0]?.content?.parts?.[0]?.text;
+    return data.choices?.[0]?.delta?.content;
   });
 }
 
-export async function validateGeminiKey(apiKey: string): Promise<boolean> {
+export async function validateMetaKey(apiKey: string): Promise<boolean> {
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
-    );
+    const res = await fetch('https://api.meta.ai/v1/models', {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
     return res.ok;
   } catch {
     return false;

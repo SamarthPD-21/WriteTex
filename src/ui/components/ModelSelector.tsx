@@ -1,25 +1,40 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
-import { AVAILABLE_MODELS, ModelInfo, AIProviderId } from '../../messaging/types';
+import { ChevronDown, Check, Sparkles, Cpu, Zap, Brain, Layers } from 'lucide-react';
+import { AVAILABLE_MODELS, ModelInfo, AIProviderId, ModelBadge } from '../../messaging/types';
 
 interface ModelSelectorProps {
-  provider: AIProviderId;
   selectedModel: string;
-  onSelectModel: (modelId: string) => void;
+  onSelectModel: (provider: AIProviderId, modelId: string) => void;
   className?: string;
 }
 
+const PROVIDER_NAMES: Record<AIProviderId, string> = {
+  meta: 'Meta AI',
+  gemini: 'Google Gemini',
+  openai: 'OpenAI',
+  anthropic: 'Claude (Anthropic)',
+};
+
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
-  provider,
   selectedModel,
   onSelectModel,
   className = '',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<AIProviderId | 'all'>('all');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const models: ModelInfo[] = AVAILABLE_MODELS[provider] || [];
-  const currentModel = models.find((m) => m.id === selectedModel) || models[0];
+  // Find active model info across all providers
+  let activeModelInfo: ModelInfo | undefined;
+  for (const p of Object.keys(AVAILABLE_MODELS) as AIProviderId[]) {
+    const found = AVAILABLE_MODELS[p]?.find((m) => m.id === selectedModel);
+    if (found) {
+      activeModelInfo = found;
+      break;
+    }
+  }
+
+  const displayName = activeModelInfo?.name || selectedModel;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -31,63 +46,137 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return () => window.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const renderBadge = (badge?: ModelBadge) => {
+    if (!badge) return null;
+    let badgeClass = 'bg-purple-950/70 text-purple-300 border-purple-800/50';
+    if (badge === 'Efficient') {
+      badgeClass = 'bg-emerald-950/70 text-emerald-300 border-emerald-800/50';
+    } else if (badge === 'Fast') {
+      badgeClass = 'bg-cyan-950/70 text-cyan-300 border-cyan-800/50';
+    } else if (badge === 'Reasoning') {
+      badgeClass = 'bg-amber-950/70 text-amber-300 border-amber-800/50';
+    } else if (badge === 'Latest') {
+      badgeClass = 'bg-violet-950/70 text-violet-300 border-violet-800/50';
+    }
+
+    return (
+      <span
+        className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium tracking-wide uppercase border ${badgeClass}`}
+      >
+        {badge}
+      </span>
+    );
+  };
+
+  const providersToShow: AIProviderId[] =
+    activeTab === 'all'
+      ? (['meta', 'gemini', 'openai', 'anthropic'] as AIProviderId[])
+      : [activeTab];
+
   return (
     <div ref={dropdownRef} className={`relative inline-block ${className}`}>
+      {/* Trigger Button */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-text-secondary bg-bg-secondary hover:bg-bg-tertiary border border-border rounded-lg transition-colors duration-150"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-text-primary bg-bg-secondary hover:bg-bg-tertiary border border-border hover:border-accent/40 rounded-xl transition-all duration-150 shadow-sm active:scale-95"
       >
-        <span className="truncate max-w-[130px]">{currentModel?.name || selectedModel}</span>
-        <ChevronDown className="w-3.5 h-3.5 text-text-muted shrink-0" />
+        <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
+        <span className="truncate max-w-[140px] font-semibold text-[11.5px]">{displayName}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
+      {/* Popover Dropdown */}
       {isOpen && (
-        <div className="absolute bottom-full mb-1 left-0 z-50 w-56 p-1 bg-bg-secondary border border-border rounded-xl shadow-xl backdrop-blur-md animate-panel-in">
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-            {provider.toUpperCase()} MODELS
+        <div className="absolute bottom-full mb-2 left-0 z-50 w-72 p-2 bg-[#1b1b28]/98 border border-border/80 rounded-2xl shadow-panel backdrop-blur-xl animate-panel-in flex flex-col gap-2">
+          {/* Header & Filter Tabs */}
+          <div className="flex items-center justify-between px-1 pt-0.5 pb-1 border-b border-border-subtle">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-accent" />
+              Select AI Model
+            </span>
           </div>
-          {models.map((model) => {
-            const isSelected = model.id === selectedModel;
-            return (
+
+          {/* Quick Provider Filters */}
+          <div className="flex items-center gap-1 px-0.5 overflow-x-auto no-scrollbar">
+            {(['all', 'meta', 'gemini', 'openai', 'anthropic'] as const).map((tab) => (
               <button
-                key={model.id}
+                key={tab}
                 type="button"
-                onClick={() => {
-                  onSelectModel(model.id);
-                  setIsOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors duration-150 text-left ${
-                  isSelected
-                    ? 'bg-accent/15 text-accent font-medium'
-                    : 'text-text-primary hover:bg-bg-tertiary'
+                onClick={() => setActiveTab(tab)}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors ${
+                  activeTab === tab
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'bg-bg-secondary text-text-muted hover:text-text-primary'
                 }`}
               >
-                <div className="flex flex-col">
-                  <span>{model.name}</span>
-                  {model.description && (
-                    <span className="text-[10px] text-text-muted leading-tight">{model.description}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 ml-2">
-                  {model.badge && (
-                    <span
-                      className={`text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider ${
-                        model.badge === 'Best'
-                          ? 'bg-purple-900/60 text-purple-300'
-                          : model.badge === 'Fast'
-                          ? 'bg-emerald-900/60 text-emerald-300'
-                          : 'bg-blue-900/60 text-blue-300'
-                      }`}
-                    >
-                      {model.badge}
-                    </span>
-                  )}
-                  {isSelected && <Check className="w-3.5 h-3.5 text-accent" />}
-                </div>
+                {tab === 'all'
+                  ? 'All'
+                  : tab === 'meta'
+                  ? 'Meta'
+                  : tab === 'gemini'
+                  ? 'Gemini'
+                  : tab === 'openai'
+                  ? 'OpenAI'
+                  : 'Claude'}
               </button>
-            );
-          })}
+            ))}
+          </div>
+
+          {/* Model List */}
+          <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
+            {providersToShow.map((providerKey) => {
+              const models = AVAILABLE_MODELS[providerKey] || [];
+              return (
+                <div key={providerKey} className="flex flex-col gap-1">
+                  <div className="px-1.5 pt-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                    {providerKey === 'meta' && <Zap className="w-3 h-3 text-indigo-400" />}
+                    {providerKey === 'gemini' && <Cpu className="w-3 h-3 text-blue-400" />}
+                    {providerKey === 'openai' && <Layers className="w-3 h-3 text-emerald-400" />}
+                    {providerKey === 'anthropic' && <Brain className="w-3 h-3 text-amber-400" />}
+                    <span>{PROVIDER_NAMES[providerKey]}</span>
+                  </div>
+
+                  {models.map((model) => {
+                    const isSelected = model.id === selectedModel;
+                    return (
+                      <button
+                        key={model.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectModel(model.provider, model.id);
+                          setIsOpen(false);
+                        }}
+                        className={`w-full flex items-start justify-between px-2 py-1.5 rounded-xl text-left transition-all duration-150 ${
+                          isSelected
+                            ? 'bg-accent/20 border border-accent/40 text-white font-medium shadow-sm'
+                            : 'hover:bg-bg-tertiary/70 text-text-primary border border-transparent'
+                        }`}
+                      >
+                        <div className="flex flex-col gap-0.5 flex-1 min-w-0 pr-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold truncate">{model.name}</span>
+                            {renderBadge(model.badge)}
+                          </div>
+                          {model.description && (
+                            <span className="text-[10px] text-text-muted leading-tight line-clamp-1">
+                              {model.description}
+                            </span>
+                          )}
+                        </div>
+
+                        {isSelected && (
+                          <div className="shrink-0 p-0.5 rounded-full bg-accent text-white mt-0.5">
+                            <Check className="w-3 h-3" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
