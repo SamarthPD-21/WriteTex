@@ -6,6 +6,7 @@ import {
 import { getStoredSettings, saveStoredSettings, validateProviderKey } from './key-store';
 import { routeAndStreamAI } from './ai-router';
 import { cleanModelOutput } from '../prompts/builder';
+import { analyzeGitHubProfile } from '../integrations/github/client';
 
 console.log('[WriteTex] Service Worker initialized');
 
@@ -89,6 +90,13 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     validateProviderKey(message.payload.provider, message.payload.apiKey)
       .then((valid) => sendResponse({ success: true, valid }))
       .catch(() => sendResponse({ success: false, valid: false }));
+    return true;
+  }
+
+  if (message.type === 'WRITETEX_ANALYZE_GITHUB') {
+    analyzeGitHubProfile(message.payload.url, message.payload.targetRole)
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((err) => sendResponse({ success: false, error: err instanceof Error ? err.message : String(err) }));
     return true;
   }
 

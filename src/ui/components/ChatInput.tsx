@@ -19,6 +19,11 @@ import {
   Layers,
   Sliders,
   Building2,
+  Star,
+  ExternalLink,
+  Loader2,
+  Code2,
+  GitFork,
 } from 'lucide-react';
 import {
   BasePreset,
@@ -31,6 +36,15 @@ import { ModelSelector } from './ModelSelector';
 import { Settings, AIProviderId, DocumentMode } from '../../messaging/types';
 import { KeyboardShortcutHint } from './KeyboardShortcutHint';
 import { DiffResult } from '../../diff/types';
+import { GitHubAnalysisResult } from '../../integrations/github/types';
+import { rankRepositoriesByRole } from '../../integrations/github/ranker';
+import { analyzeGitHubViaBackground } from '../../messaging/runtime';
+
+const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-3.5 h-3.5' }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+  </svg>
+);
 
 export interface HistoryItem {
   id: string;
@@ -56,6 +70,7 @@ interface ChatInputProps {
       targetCompany?: string;
       targetRole?: string;
       jobDescription?: string;
+      githubAnalysis?: GitHubAnalysisResult;
     }
   ) => void;
   isGenerating: boolean;
@@ -90,6 +105,78 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [jobDescription, setJobDescription] = useState<string>('');
   const [isTargetExpanded, setIsTargetExpanded] = useState<boolean>(false);
   const [showJdInput, setShowJdInput] = useState<boolean>(false);
+
+  // GitHub Analysis details
+  const [githubUrl, setGithubUrl] = useState<string>('');
+  const [isAnalyzingGithub, setIsAnalyzingGithub] = useState<boolean>(false);
+  const [githubAnalysis, setGithubAnalysis] = useState<GitHubAnalysisResult | null>(null);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const [isGithubExpanded, setIsGithubExpanded] = useState<boolean>(false);
+
+  // Auto re-rank repositories when targetRole changes
+  useEffect(() => {
+    if (githubAnalysis && githubAnalysis.allProjects && githubAnalysis.allProjects.length > 0) {
+      const reranked = rankRepositoriesByRole(githubAnalysis.allProjects, targetRole);
+      setGithubAnalysis((prev) =>
+        prev
+          ? {
+              ...prev,
+              targetRole,
+              topProjects: reranked.slice(0, 4),
+              allProjects: reranked,
+            }
+          : null
+      );
+    }
+  }, [targetRole]);
+
+  const handleAnalyzeGithub = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!githubUrl.trim() || isAnalyzingGithub) return;
+
+    setIsAnalyzingGithub(true);
+    setGithubError(null);
+
+    try {
+      const result = await analyzeGitHubViaBackground(githubUrl.trim(), targetRole);
+      setGithubAnalysis(result);
+      setIsGithubExpanded(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setGithubError(msg);
+    } finally {
+      setIsAnalyzingGithub(false);
+    }
+  };
+
+  const handleToggleProject = (projectName: string) => {
+    if (!githubAnalysis) return;
+    setGithubAnalysis({
+      ...githubAnalysis,
+      topProjects: githubAnalysis.topProjects.map((p) =>
+        p.name === projectName ? { ...p, selected: p.selected === false ? true : false } : p
+      ),
+    });
+  };
+
+  const handleTriggerGitHubAction = (
+    actionId: 'action_github_projects' | 'action_github_skills' | 'cl_github_story'
+  ) => {
+    setActivePresetId(actionId);
+    if (actionId === 'action_github_projects') {
+      setPrompt(
+        'Transform the analyzed top GitHub projects into a high-impact LaTeX Projects section using \\resumeProjectHeading and Google XYZ bullets.'
+      );
+    } else if (actionId === 'action_github_skills') {
+      setPrompt(
+        'Extract tech stack from my analyzed GitHub repos and update the LaTeX technical skills matrix.'
+      );
+    } else if (actionId === 'cl_github_story') {
+      setPrompt(
+        'Craft a compelling STAR technical narrative highlighting my key GitHub project in this cover letter.'
+      );
+    }
+  };
 
   // Prompt and preset state
   const [prompt, setPrompt] = useState<string>('');
@@ -164,6 +251,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       targetCompany: targetCompany.trim() || undefined,
       targetRole: targetRole.trim() || undefined,
       jobDescription: jobDescription.trim() || undefined,
+      githubAnalysis: githubAnalysis || undefined,
     });
 
     setPrompt('');
@@ -391,6 +479,213 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             )}
           </div>
         )}
+
+        {/* GitHub Integration Section */}
+        <div className="flex flex-col gap-1.5 pt-1.5 border-t border-border-subtle/50 text-xs">
+          {!githubAnalysis ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <GithubIcon className="w-3.5 h-3.5 text-text-secondary shrink-0" />
+                <input
+                  type="text"
+                  value={githubUrl}
+                  onChange={(e) => setGithubUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAnalyzeGithub();
+                    }
+                  }}
+                  placeholder="GitHub profile or repo link (e.g. github.com/username)..."
+                  className="flex-1 px-2.5 py-1 bg-[#0f0f18] border border-border/70 rounded-lg text-[11px] text-text-primary placeholder:text-text-muted outline-none focus:border-accent"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAnalyzeGithub()}
+                  disabled={!githubUrl.trim() || isAnalyzingGithub}
+                  className="px-2.5 py-1 bg-white/10 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed text-text-primary rounded-lg text-[11px] font-medium transition-colors shrink-0 flex items-center gap-1"
+                >
+                  {isAnalyzingGithub ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin text-accent" />
+                      <span>Analyzing...</span>
+                    </>
+                  ) : (
+                    <span>Analyze</span>
+                  )}
+                </button>
+              </div>
+              {githubError && (
+                <div className="text-[10px] text-red-400 px-1 font-medium">{githubError}</div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 bg-[#12121c] border border-border/60 p-2 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 overflow-hidden">
+                  <GithubIcon className="w-3.5 h-3.5 text-white shrink-0" />
+                  <a
+                    href={githubAnalysis.profileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-text-primary font-semibold text-[11px] hover:underline flex items-center gap-0.5 truncate"
+                  >
+                    <span>@{githubAnalysis.username}</span>
+                    <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                  </a>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium shrink-0">
+                    {githubAnalysis.topProjects.filter((p) => p.selected !== false).length} / {githubAnalysis.topProjects.length} selected
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsGithubExpanded(!isGithubExpanded)}
+                    className="flex items-center gap-0.5 text-[10px] text-text-muted hover:text-text-primary transition-colors"
+                  >
+                    <span>{isGithubExpanded ? 'Hide' : 'Projects'}</span>
+                    {isGithubExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGithubAnalysis(null);
+                      setGithubUrl('');
+                      setIsGithubExpanded(false);
+                    }}
+                    className="p-0.5 rounded hover:bg-white/10 text-text-muted hover:text-text-primary"
+                    title="Remove GitHub profile"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Top Languages badges */}
+              {githubAnalysis.topLanguages && githubAnalysis.topLanguages.length > 0 && (
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar text-[9.5px] text-text-muted">
+                  <Code2 className="w-3 h-3 shrink-0 text-text-secondary" />
+                  {githubAnalysis.topLanguages.slice(0, 4).map((l) => (
+                    <span key={l.language} className="px-1.5 py-0.5 rounded bg-white/5 font-mono text-text-secondary">
+                      {l.language}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Expandable Project List with Checkboxes & Role Alignment */}
+              {isGithubExpanded && (
+                <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle/50 animate-in fade-in duration-150">
+                  <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                    Role-Ranked Top Projects ({targetRole || 'General'}):
+                  </div>
+
+                  {githubAnalysis.topProjects.map((project) => {
+                    const isSelected = project.selected !== false;
+                    return (
+                      <div
+                        key={project.name}
+                        onClick={() => handleToggleProject(project.name)}
+                        className={`flex flex-col gap-0.5 p-2 rounded-lg cursor-pointer border transition-all ${
+                          isSelected
+                            ? 'bg-[#181828] border-accent/40 shadow-sm'
+                            : 'bg-[#0f0f18] border-border/40 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              className="rounded border-border accent-accent w-3 h-3 cursor-pointer"
+                            />
+                            <span className="font-semibold text-text-primary text-[11px] truncate">
+                              {project.name}
+                            </span>
+                            <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-white/10 text-text-secondary">
+                              {project.language}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 text-[10px] text-text-muted">
+                            {project.stars > 0 && (
+                              <span className="flex items-center gap-0.5 text-amber-300">
+                                <Star className="w-2.5 h-2.5 fill-current" />
+                                {project.stars}
+                              </span>
+                            )}
+                            {project.forks > 0 && (
+                              <span className="flex items-center gap-0.5">
+                                <GitFork className="w-2.5 h-2.5" />
+                                {project.forks}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {project.description && (
+                          <div className="text-[10px] text-text-secondary line-clamp-1 pl-4.5">
+                            {project.description}
+                          </div>
+                        )}
+
+                        {project.roleMatchReason && (
+                          <div className="text-[9.5px] text-accent/90 italic line-clamp-1 pl-4.5">
+                            ⚡ {project.roleMatchReason}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Quick Action Buttons */}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    {docMode === 'resume' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTriggerGitHubAction('action_github_projects');
+                          }}
+                          className="flex-1 py-1 rounded-lg text-[10px] font-semibold bg-accent/20 hover:bg-accent/30 text-accent flex items-center justify-center gap-1 transition-colors"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>+ Add to Resume</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTriggerGitHubAction('action_github_skills');
+                          }}
+                          className="py-1 px-2.5 rounded-lg text-[10px] font-medium bg-white/5 hover:bg-white/10 text-text-secondary transition-colors"
+                        >
+                          <span>Sync Skills</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTriggerGitHubAction('cl_github_story');
+                        }}
+                        className="flex-1 py-1 rounded-lg text-[10px] font-semibold bg-accent/20 hover:bg-accent/30 text-accent flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Weave Project Story into Letter</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* API Key Alert if missing */}

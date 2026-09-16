@@ -19,7 +19,8 @@
     "https://api.meta.ai/*",
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*",
-    "https://api.anthropic.com/*"
+    "https://api.anthropic.com/*",
+    "https://api.github.com/*"
   ],
   "background": {
     "service_worker": "background.js",

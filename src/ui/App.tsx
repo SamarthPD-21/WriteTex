@@ -15,7 +15,11 @@ import { findSnippetLocation } from '../diff/apply';
 import { validateLatex } from '../latex/validator';
 import { DiffResult } from '../diff/types';
 import { isExtensionContextValid } from '../messaging/runtime';
-import { AVAILABLE_MODELS, DocumentMode } from '../messaging/types';
+import {
+  AVAILABLE_MODELS,
+  DocumentMode,
+} from '../messaging/types';
+import { GitHubAnalysisResult } from '../integrations/github/types';
 import { RefreshCw } from 'lucide-react';
 
 export type AppView = 'input' | 'streaming' | 'diff' | 'edit' | 'settings';
@@ -229,6 +233,7 @@ export const App: React.FC = () => {
       targetCompany?: string;
       targetRole?: string;
       jobDescription?: string;
+      githubAnalysis?: GitHubAnalysisResult;
     }
   ) => {
     setLastPrompt(prompt);
@@ -275,6 +280,7 @@ export const App: React.FC = () => {
         targetCompany: meta?.targetCompany,
         targetRole: meta?.targetRole,
         jobDescription: meta?.jobDescription,
+        githubAnalysis: meta?.githubAnalysis,
       },
       presetKey
     );

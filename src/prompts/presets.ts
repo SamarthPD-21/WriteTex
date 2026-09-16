@@ -192,6 +192,24 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
     userPrompt:
       'Generate the complete missing preamble for Jake\'s Resume: include \\documentclass[letterpaper,11pt]{article}, packages (latexsym, fullpage, titlesec, marvosym, color, verbatim, enumitem, hyperref, fancyhdr, babel, tabularx), custom macros (\\resumeItem, \\resumeSubheading, \\resumeSubSubheading, \\resumeProjectHeading, \\resumeSubHeadingListStart/End, \\resumeItemListStart/End), margins, and \\begin{document}. Return ONLY the valid preamble block.',
   },
+  {
+    id: 'action_github_projects',
+    category: 'action',
+    label: 'Auto-Add GitHub Projects',
+    icon: '🐙',
+    description: 'Format analyzed top GitHub projects into \\resumeProjectHeading with Google XYZ bullets',
+    userPrompt:
+      'Transform the analyzed top GitHub projects into a high-impact LaTeX Projects section. Format each project using the template convention:\n\\resumeProjectHeading{\\textbf{Project Name} $|$ \\emph{Tech Stack}}{\\href{https://github.com/...}{\\underline{github.com/...}}}\n\\resumeItemListStart\n  \\resumeItem{Accomplished [X] by doing [Y] as measured by [Z] (concrete metrics, latency, scale, stars).}\n  \\resumeItem{Architectural design, system constraints, or core engineering achievement.}\n\\resumeItemListEnd\nTailor the achievements and technical depth directly to the target role.',
+  },
+  {
+    id: 'action_github_skills',
+    category: 'action',
+    label: 'Sync GitHub Skills',
+    icon: '⚡',
+    description: 'Extract tech stack from GitHub repos and update the LaTeX technical skills table',
+    userPrompt:
+      'Extract all primary languages, frameworks, and developer tools used across the analyzed GitHub projects, and synthesize them into a clean LaTeX technical skills matrix categorized by Languages, Frameworks / Libraries, Developer Tools, and Cloud / Infrastructure.',
+  },
 ];
 
 export const ROLE_PRESETS: ResumePreset[] = [
@@ -207,6 +225,15 @@ export const PRESET_PROMPTS = ROLE_PRESETS;
 // ==========================================
 
 export const COVER_LETTER_SECTION_PRESETS: CoverLetterPreset[] = [
+  {
+    id: 'cl_github_story',
+    category: 'section',
+    label: 'Feature GitHub Project Story',
+    icon: '🐙',
+    description: 'Weave the candidate\'s best GitHub project into a compelling STAR technical narrative',
+    userPrompt:
+      'Select the candidate\'s most impressive GitHub project that best aligns with the target role and company. Craft a compelling STAR (Situation, Task, Action, Result) body paragraph for the cover letter: introduce the problem space, detail the system architecture and technical decisions (mentioning the project link and technologies), and highlight the measurable outcome or community adoption.',
+  },
   {
     id: 'cl_draft_full',
     category: 'section',

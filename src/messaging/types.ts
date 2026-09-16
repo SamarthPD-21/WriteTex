@@ -182,6 +182,8 @@ export const AVAILABLE_MODELS: Record<AIProviderId, ModelInfo[]> = {
   ],
 };
 
+import { GitHubAnalysisResult } from '../integrations/github/types';
+
 export type DocumentMode = 'resume' | 'cover_letter';
 
 export interface EditorContext {
@@ -197,6 +199,7 @@ export interface EditorContext {
   targetCompany?: string;
   targetRole?: string;
   jobDescription?: string;
+  githubAnalysis?: GitHubAnalysisResult;
 }
 
 export interface GenerateRequest {
@@ -215,7 +218,8 @@ export type RuntimeMessage =
   | { type: 'WRITETEX_CANCEL_GENERATE'; payload: { requestId: string } }
   | { type: 'WRITETEX_GET_SETTINGS' }
   | { type: 'WRITETEX_SAVE_SETTINGS'; payload: Partial<Settings> }
-  | { type: 'WRITETEX_VALIDATE_KEY'; payload: { provider: AIProviderId; apiKey: string } };
+  | { type: 'WRITETEX_VALIDATE_KEY'; payload: { provider: AIProviderId; apiKey: string } }
+  | { type: 'WRITETEX_ANALYZE_GITHUB'; payload: { url: string; targetRole?: string } };
 
 export type StreamEvent =
   | { type: 'chunk'; text: string }

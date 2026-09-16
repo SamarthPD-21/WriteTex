@@ -140,4 +140,65 @@ describe('Prompt Builder', () => {
     );
     expect(queryDoc.detectedDocMode).toBe('cover_letter');
   });
+
+  it('injects analyzed GitHub projects into prompt context', () => {
+    const built = buildPrompt(
+      'Generate LaTeX project section',
+      {
+        currentFileName: 'resume.tex',
+        targetRole: 'Senior AI Engineer',
+        githubAnalysis: {
+          username: 'alexdev',
+          profileUrl: 'https://github.com/alexdev',
+          publicReposCount: 24,
+          topLanguages: [
+            { language: 'Python', count: 12 },
+            { language: 'C++', count: 4 },
+          ],
+          allTopics: ['deep-learning', 'cuda', 'llm'],
+          allProjects: [],
+          topProjects: [
+            {
+              name: 'flash-attention-opt',
+              fullName: 'alexdev/flash-attention-opt',
+              description: 'Custom CUDA kernels for FlashAttention-2 with 2.4x speedup',
+              url: 'https://github.com/alexdev/flash-attention-opt',
+              htmlUrl: 'https://github.com/alexdev/flash-attention-opt',
+              language: 'CUDA',
+              stars: 320,
+              forks: 25,
+              updatedAt: new Date().toISOString(),
+              topics: ['cuda', 'flash-attention', 'llm'],
+              isFork: false,
+              roleMatchReason: 'Custom CUDA kernel engineering and LLM acceleration.',
+              selected: true,
+            },
+          ],
+          analyzedAt: Date.now(),
+        },
+      },
+      'action_github_projects'
+    );
+
+    expect(built.userPrompt).toContain('[CANDIDATE TOP GITHUB PROJECTS & OPEN SOURCE WORK]');
+    expect(built.userPrompt).toContain('https://github.com/alexdev');
+    expect(built.userPrompt).toContain('@alexdev');
+    expect(built.userPrompt).toContain('Top Languages: Python (12), C++ (4)');
+    expect(built.userPrompt).toContain('flash-attention-opt');
+    expect(built.userPrompt).toContain('Custom CUDA kernels for FlashAttention-2');
+    expect(built.userPrompt).toContain('Custom CUDA kernel engineering and LLM acceleration.');
+    expect(built.userPrompt).toContain('Role Relevance:');
+  });
+
+  it('provides GitHub-specific presets for resume and cover letter', () => {
+    const githubProjectsPreset = ROLE_PRESETS.find((p) => p.id === 'action_github_projects');
+    expect(githubProjectsPreset).toBeDefined();
+    expect(githubProjectsPreset?.label).toBe('Auto-Add GitHub Projects');
+    expect(githubProjectsPreset?.userPrompt).toContain('\\resumeProjectHeading');
+
+    const githubSkillsPreset = ROLE_PRESETS.find((p) => p.id === 'action_github_skills');
+    expect(githubSkillsPreset).toBeDefined();
+    expect(githubSkillsPreset?.label).toBe('Sync GitHub Skills');
+  });
 });
+

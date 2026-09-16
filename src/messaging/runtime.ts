@@ -6,6 +6,7 @@ import {
   AIProviderId,
   DEFAULT_SETTINGS,
 } from './types';
+import { GitHubAnalysisResult } from '../integrations/github/types';
 
 /**
  * Checks if the Chrome extension context is still valid.
@@ -183,3 +184,40 @@ export function streamGenerationFromBackground(
     }
   };
 }
+
+/**
+ * Analyze GitHub profile or repository via the background service worker
+ */
+export async function analyzeGitHubViaBackground(
+  url: string,
+  targetRole?: string
+): Promise<GitHubAnalysisResult> {
+  if (!isExtensionContextValid()) {
+    throw new Error(CONTEXT_INVALIDATED_MSG);
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: 'WRITETEX_ANALYZE_GITHUB',
+          payload: { url, targetRole },
+        } as RuntimeMessage,
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message || 'Failed to connect to background service worker.'));
+            return;
+          }
+          if (response?.success && response.result) {
+            resolve(response.result);
+          } else {
+            reject(new Error(response?.error || 'Failed to analyze GitHub link.'));
+          }
+        }
+      );
+    } catch (err: unknown) {
+      reject(new Error(err instanceof Error ? err.message : String(err)));
+    }
+  });
+}
+

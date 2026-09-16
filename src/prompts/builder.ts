@@ -97,6 +97,35 @@ export function buildPrompt(
     targetHeader += `[JOB DESCRIPTION / KEY REQUIREMENTS]\n${context.jobDescription.trim()}\n\n`;
   }
 
+  // GitHub analyzed projects context
+  let githubSection = '';
+  if (context.githubAnalysis && context.githubAnalysis.topProjects && context.githubAnalysis.topProjects.length > 0) {
+    githubSection += `[CANDIDATE TOP GITHUB PROJECTS & OPEN SOURCE WORK]\n`;
+    githubSection += `GitHub Profile: ${context.githubAnalysis.profileUrl} (@${context.githubAnalysis.username})\n`;
+    if (context.githubAnalysis.topLanguages && context.githubAnalysis.topLanguages.length > 0) {
+      githubSection += `Top Languages: ${context.githubAnalysis.topLanguages.slice(0, 5).map((l) => `${l.language} (${l.count})`).join(', ')}\n`;
+    }
+    githubSection += `Featured Projects (ranked for target role):\n`;
+
+    const selectedProjects = context.githubAnalysis.topProjects.filter((p) => p.selected !== false);
+    const projectsToFormat = selectedProjects.length > 0 ? selectedProjects : context.githubAnalysis.topProjects.slice(0, 3);
+
+    for (const project of projectsToFormat) {
+      githubSection += `- **${project.name}** (${project.url})\n`;
+      githubSection += `  Primary Language: ${project.language} | Stars: ${project.stars} | Forks: ${project.forks}\n`;
+      if (project.description) {
+        githubSection += `  Description: ${project.description}\n`;
+      }
+      if (project.topics && project.topics.length > 0) {
+        githubSection += `  Topics / Tech: ${project.topics.join(', ')}\n`;
+      }
+      if (project.roleMatchReason) {
+        githubSection += `  Role Relevance: ${project.roleMatchReason}\n`;
+      }
+    }
+    githubSection += '\n';
+  }
+
   let codeHeader = '[SELECTED LATEX CODE]';
   if (effectiveDocMode === 'cover_letter' && context.selectedText) {
     codeHeader = '[CANDIDATE RESUME EXPERIENCE / BACKGROUND]';
@@ -105,7 +134,7 @@ export function buildPrompt(
   let fullUserPrompt = '';
 
   if (context.selectedText && context.selectedText.trim().length > 0) {
-    fullUserPrompt = `${targetHeader}[LATEX CONTEXT]
+    fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 
 ${codeHeader}
@@ -114,14 +143,14 @@ ${context.selectedText}
 [USER INSTRUCTION]
 ${userQuery}`;
   } else if (context.currentLineText) {
-    fullUserPrompt = `${targetHeader}[LATEX CONTEXT]
+    fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 Current line (${context.currentLineNumber || 1}): ${context.currentLineText}
 
 [USER INSTRUCTION]
 ${userQuery}`;
   } else {
-    fullUserPrompt = `${targetHeader}[LATEX CONTEXT]
+    fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 
 [USER INSTRUCTION]
