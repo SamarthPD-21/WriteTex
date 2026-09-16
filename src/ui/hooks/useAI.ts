@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { GenerateRequest, Settings } from '../../messaging/types';
+import { GenerateRequest, Settings, EditorContext } from '../../messaging/types';
 import { streamGenerationFromBackground } from '../../messaging/runtime';
 import { computeDiff } from '../../diff/compute';
 import { DiffResult } from '../../diff/types';
@@ -17,13 +17,7 @@ export function useAI(settings: Settings) {
   const generate = useCallback(
     async (
       userPrompt: string,
-      context: {
-        selectedText?: string;
-        currentFileContent?: string;
-        currentFileName?: string;
-        currentLineNumber?: number;
-        currentLineText?: string;
-      },
+      context: EditorContext,
       presetKey?: string
     ) => {
       // Abort any existing generation

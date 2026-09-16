@@ -14,7 +14,7 @@ import { usePanelPosition } from './hooks/usePanelPosition';
 import { applyFuzzyPatch } from '../diff/apply';
 import { DiffResult } from '../diff/types';
 import { isExtensionContextValid } from '../messaging/runtime';
-import { AVAILABLE_MODELS } from '../messaging/types';
+import { AVAILABLE_MODELS, DocumentMode } from '../messaging/types';
 import { RefreshCw } from 'lucide-react';
 
 export type AppView = 'input' | 'streaming' | 'diff' | 'edit' | 'settings';
@@ -23,6 +23,11 @@ export const App: React.FC = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [activeView, setActiveView] = useState<AppView>('input');
   const [lastPrompt, setLastPrompt] = useState<string>('');
+  const [lastMeta, setLastMeta] = useState<{
+    docMode?: DocumentMode;
+    targetCompany?: string;
+    targetRole?: string;
+  } | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isApplying, setIsApplying] = useState<boolean>(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -92,13 +97,16 @@ export const App: React.FC = () => {
         {
           id: `hist_${Date.now()}`,
           userPrompt: lastPrompt,
+          docMode: lastMeta?.docMode,
+          targetCompany: lastMeta?.targetCompany,
+          targetRole: lastMeta?.targetRole,
           response: streamedText,
           diffResult,
           timestamp: Date.now(),
         },
       ]);
     }
-  }, [aiStatus, streamedText, lastPrompt, diffResult]);
+  }, [aiStatus, streamedText, lastPrompt, diffResult, lastMeta]);
 
   // Listen for global shortcut message from service worker
   useEffect(() => {
@@ -199,8 +207,26 @@ export const App: React.FC = () => {
     addToast('info', 'Generation stopped.');
   };
 
-  const handleGenerate = async (prompt: string, presetKey?: string) => {
+  const handleGenerate = async (
+    prompt: string,
+    presetKey?: string,
+    meta?: {
+      docMode?: DocumentMode;
+      targetCompany?: string;
+      targetRole?: string;
+      jobDescription?: string;
+    }
+  ) => {
     setLastPrompt(prompt);
+    setLastMeta(
+      meta
+        ? {
+            docMode: meta.docMode,
+            targetCompany: meta.targetCompany,
+            targetRole: meta.targetRole,
+          }
+        : null
+    );
     const fullDoc = await getFullContent();
 
     generate(
@@ -211,6 +237,10 @@ export const App: React.FC = () => {
         currentFileName,
         currentLineNumber: currentLine?.number,
         currentLineText: currentLine?.text,
+        docMode: meta?.docMode,
+        targetCompany: meta?.targetCompany,
+        targetRole: meta?.targetRole,
+        jobDescription: meta?.jobDescription,
       },
       presetKey
     );

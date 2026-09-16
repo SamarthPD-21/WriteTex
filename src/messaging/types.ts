@@ -182,6 +182,8 @@ export const AVAILABLE_MODELS: Record<AIProviderId, ModelInfo[]> = {
   ],
 };
 
+export type DocumentMode = 'resume' | 'cover_letter';
+
 export interface EditorContext {
   selectedText?: string;
   currentFileContent?: string;
@@ -191,6 +193,10 @@ export interface EditorContext {
   selectionTo?: number;
   currentLineNumber?: number;
   currentLineText?: string;
+  docMode?: DocumentMode;
+  targetCompany?: string;
+  targetRole?: string;
+  jobDescription?: string;
 }
 
 export interface GenerateRequest {
