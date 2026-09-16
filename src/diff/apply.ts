@@ -7,43 +7,140 @@ export interface ApplyResult {
   confidence: number;
 }
 
+export interface SnippetLocation {
+  from: number;
+  to: number;
+  matchedText: string;
+}
+
 /**
- * Applies a replacement text to a target document using fuzzy matching
- * if the exact coordinates or text moved slightly due to concurrent edits.
+ * Safely locates a snippet inside a document.
+ * 1. Exact match (single occurrence).
+ * 2. Exact match with proximity if multiple occurrences exist and approximateIndex is provided.
+ * 3. Whitespace-normalized match.
+ * 4. Localized search strictly near approximateIndex.
+ *
+ * NEVER matches offset 0 when the snippet is elsewhere in the document.
+ */
+export function findSnippetLocation(
+  doc: string,
+  snippet: string,
+  approximateIndex?: number
+): SnippetLocation | null {
+  if (!doc || !snippet) return null;
+
+  const rawSnippet = snippet;
+  const trimmed = snippet.trim();
+  if (!trimmed) return null;
+
+  // 1. Try finding all exact occurrences of rawSnippet
+  const indices: number[] = [];
+  let pos = doc.indexOf(rawSnippet, 0);
+  while (pos !== -1) {
+    indices.push(pos);
+    pos = doc.indexOf(rawSnippet, pos + 1);
+  }
+
+  if (indices.length === 1) {
+    return {
+      from: indices[0],
+      to: indices[0] + rawSnippet.length,
+      matchedText: rawSnippet,
+    };
+  }
+
+  if (indices.length > 1) {
+    if (approximateIndex !== undefined && approximateIndex >= 0) {
+      let closest = indices[0];
+      let minDist = Math.abs(indices[0] - approximateIndex);
+      for (let i = 1; i < indices.length; i++) {
+        const d = Math.abs(indices[i] - approximateIndex);
+        if (d < minDist) {
+          minDist = d;
+          closest = indices[i];
+        }
+      }
+      return {
+        from: closest,
+        to: closest + rawSnippet.length,
+        matchedText: rawSnippet,
+      };
+    }
+    // Ambiguous multiple occurrences without approximate index
+    return null;
+  }
+
+  // 2. Try trimmed snippet if raw snippet has different leading/trailing whitespace
+  if (trimmed !== rawSnippet) {
+    const trimmedIndices: number[] = [];
+    let tPos = doc.indexOf(trimmed, 0);
+    while (tPos !== -1) {
+      trimmedIndices.push(tPos);
+      tPos = doc.indexOf(trimmed, tPos + 1);
+    }
+
+    if (trimmedIndices.length === 1) {
+      return {
+        from: trimmedIndices[0],
+        to: trimmedIndices[0] + trimmed.length,
+        matchedText: trimmed,
+      };
+    }
+
+    if (trimmedIndices.length > 1 && approximateIndex !== undefined) {
+      let closest = trimmedIndices[0];
+      let minDist = Math.abs(trimmedIndices[0] - approximateIndex);
+      for (let i = 1; i < trimmedIndices.length; i++) {
+        const d = Math.abs(trimmedIndices[i] - approximateIndex);
+        if (d < minDist) {
+          minDist = d;
+          closest = trimmedIndices[i];
+        }
+      }
+      return {
+        from: closest,
+        to: closest + trimmed.length,
+        matchedText: trimmed,
+      };
+    }
+  }
+
+  // 3. Localized search strictly around approximateIndex
+  if (approximateIndex !== undefined && approximateIndex >= 0 && approximateIndex < doc.length) {
+    const dmp = new DiffMatchPatch();
+    dmp.Match_Threshold = 0.4; // Strict threshold to prevent false matches
+    dmp.Match_Distance = 250;
+
+    const windowStart = Math.max(0, approximateIndex - 300);
+    const windowEnd = Math.min(doc.length, approximateIndex + trimmed.length + 300);
+    const localSlice = doc.slice(windowStart, windowEnd);
+
+    const relativeMatch = dmp.match_main(localSlice, trimmed, approximateIndex - windowStart);
+    if (relativeMatch !== -1) {
+      const matchIdx = windowStart + relativeMatch;
+      return {
+        from: matchIdx,
+        to: matchIdx + trimmed.length,
+        matchedText: doc.slice(matchIdx, matchIdx + trimmed.length),
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Applies a replacement text to a target document SAFELY.
+ * NEVER mutates or corrupts unrelated sections of the document.
  */
 export function applyFuzzyPatch(
   originalDoc: string,
   originalSnippet: string,
   replacementSnippet: string,
-  matchThreshold = 0.6
+  approximateIndex?: number
 ): ApplyResult {
-  // 1. Direct exact replacement if originalSnippet exists uniquely
-  const exactIndex = originalDoc.indexOf(originalSnippet);
-  if (exactIndex !== -1) {
-    // Check if it's unique or if there are multiple occurrences
-    const secondIndex = originalDoc.indexOf(originalSnippet, exactIndex + 1);
-    if (secondIndex === -1) {
-      const patchedText =
-        originalDoc.slice(0, exactIndex) +
-        replacementSnippet +
-        originalDoc.slice(exactIndex + originalSnippet.length);
-      return {
-        success: true,
-        patchedText,
-        appliedCount: 1,
-        confidence: 1.0,
-      };
-    }
-  }
-
-  // 2. Diff-Match-Patch fuzzy patch
-  const dmp = new DiffMatchPatch();
-  dmp.Match_Threshold = matchThreshold;
-  dmp.Match_Distance = 1000;
-
-  // Create patch from originalSnippet to replacementSnippet
-  const patchList = dmp.patch_make(originalSnippet, replacementSnippet);
-  if (patchList.length === 0) {
+  const loc = findSnippetLocation(originalDoc, originalSnippet, approximateIndex);
+  if (!loc) {
     return {
       success: false,
       patchedText: originalDoc,
@@ -52,15 +149,15 @@ export function applyFuzzyPatch(
     };
   }
 
-  // Apply patch to the full document
-  const [patchedText, results] = dmp.patch_apply(patchList, originalDoc);
-  const successCount = results.filter(Boolean).length;
-  const isSuccess = successCount === results.length && results.length > 0;
+  const patchedText =
+    originalDoc.slice(0, loc.from) +
+    replacementSnippet +
+    originalDoc.slice(loc.to);
 
   return {
-    success: isSuccess,
+    success: true,
     patchedText,
-    appliedCount: successCount,
-    confidence: results.length > 0 ? successCount / results.length : 0,
+    appliedCount: 1,
+    confidence: 1.0,
   };
 }

@@ -122,7 +122,7 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
     icon: '🎯',
     description: 'Accomplished [X] as measured by [Y] by doing [Z]',
     userPrompt:
-      'Rewrite these resume achievements following Google\'s XYZ formula: "Accomplished [X] as measured by [Y] by doing [Z]". Insert realistic quantifiable metric placeholders (e.g., % improvement, latency reduction, scale, users served) where needed.',
+      'Rewrite these resume achievements following Google\'s XYZ formula: "Accomplished [X] as measured by [Y] by doing [Z]". Insert realistic quantifiable metric placeholders (e.g., % improvement, latency reduction, scale, users served) where needed. Keep the candidate\'s real company, dates, and technologies intact.',
   },
   {
     id: 'action_verbs',
@@ -131,7 +131,7 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
     icon: '⚡',
     description: 'Replace passive language with assertive leadership verbs',
     userPrompt:
-      'Revise each bullet point to start with high-impact, assertive action verbs (e.g. "Architected", "Spearheaded", "Engineered", "Orchestrated", "Benchmarked"). Eliminate weak phrases like "responsible for" or "helped with".',
+      'Revise each bullet point to start with high-impact, assertive action verbs (e.g. "Architected", "Spearheaded", "Engineered", "Orchestrated", "Benchmarked"). Eliminate weak phrases like "responsible for" or "helped with". Keep all real company names, dates, and project details intact; do not invent fictional companies or extra headers.',
   },
   {
     id: 'action_metrics',
@@ -140,7 +140,7 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
     icon: '📈',
     description: 'Inject concrete scale, dollar savings, throughput, and % metrics',
     userPrompt:
-      'Enhance each bullet point with concrete quantifiable results and scale indicators (e.g. TPS, percentage latency reduction, cost savings, user scale, team size, data volume).',
+      'Enhance each bullet point with concrete quantifiable results and scale indicators (e.g. TPS, percentage latency reduction, cost savings, user scale, team size, data volume). Preserve existing technologies and organizations.',
   },
   {
     id: 'action_one_page',
@@ -172,11 +172,16 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
   {
     id: 'action_fix_latex',
     category: 'action',
-    label: 'Fix Resume LaTeX',
+    label: 'Fix LaTeX Errors',
     icon: '🛠',
-    description: 'Repair broken \\resumeItem, \\cventry, itemize, or formatting commands',
+    description: 'Repair corrupted macros, missing backslashes, unclosed braces, and undefined sequences',
     userPrompt:
-      'Inspect and fix any LaTeX syntax issues in this resume snippet: ensure all itemize / \\resumeItem / \\resumeSubheading commands are properly balanced, curly braces are closed, and formatting is clean.',
+      'Fix all LaTeX errors and restore broken or truncated macros in this code:\n' +
+      '1. Restore truncated macros: change "n{...}" or "ection{...}" to "\\section{...}", change "SubHeadingListStart" or "meSubheading" to "\\resumeSubHeadingListStart" or "\\resumeSubheading", change "meItemListStart" to "\\resumeItemListStart", change "meItemListEnd" to "\\resumeItemListEnd", change "sumeItem{" to "\\resumeItem{", change "xtit{" to "\\textit{", change "textbf{" to "\\textbf{".\n' +
+      '2. Ensure all curly braces {} and brackets [] are balanced.\n' +
+      '3. Ensure \\documentclass and \\begin{document} / \\end{document} are present and balanced if this is a full document.\n' +
+      '4. Escape % as \\%, & as \\& (except in tabular columns), and $ as \\$.\n' +
+      '5. Return ONLY the corrected compilable LaTeX code with no conversational filler.',
   },
 ];
 

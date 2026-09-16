@@ -11,7 +11,8 @@ import { useEditor } from './hooks/useEditor';
 import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
 import { usePanelPosition } from './hooks/usePanelPosition';
-import { applyFuzzyPatch } from '../diff/apply';
+import { findSnippetLocation } from '../diff/apply';
+import { validateLatex } from '../latex/validator';
 import { DiffResult } from '../diff/types';
 import { isExtensionContextValid } from '../messaging/runtime';
 import { AVAILABLE_MODELS, DocumentMode } from '../messaging/types';
@@ -40,7 +41,6 @@ export const App: React.FC = () => {
     selectionRange,
     currentLine,
     getFullContent,
-    replaceSelection,
     replaceRange,
   } = useEditor();
 
@@ -207,6 +207,20 @@ export const App: React.FC = () => {
     addToast('info', 'Generation stopped.');
   };
 
+  const [pendingEdit, setPendingEdit] = useState<{
+    from: number;
+    to: number;
+    text: string;
+    fileName: string;
+  } | null>(null);
+  const [lastRevertable, setLastRevertable] = useState<{
+    from: number;
+    to: number;
+    previousText: string;
+    replacementText: string;
+    fileName: string;
+  } | null>(null);
+
   const handleGenerate = async (
     prompt: string,
     presetKey?: string,
@@ -227,6 +241,26 @@ export const App: React.FC = () => {
           }
         : null
     );
+
+    // Snapshot the exact target selection at generation trigger time
+    if (selectionRange && !selectionRange.empty) {
+      setPendingEdit({
+        from: selectionRange.from,
+        to: selectionRange.to,
+        text: selectedText || selectionRange.text,
+        fileName: currentFileName,
+      });
+    } else if (selectedText && selectedText.trim().length > 0) {
+      setPendingEdit({
+        from: currentLine?.from ?? 0,
+        to: (currentLine?.from ?? 0) + selectedText.length,
+        text: selectedText,
+        fileName: currentFileName,
+      });
+    } else {
+      setPendingEdit(null);
+    }
+
     const fullDoc = await getFullContent();
 
     generate(
@@ -248,6 +282,7 @@ export const App: React.FC = () => {
 
   /**
    * TRANSACTIONAL APPLICATION OF EDITS DIRECTLY INTO OVERLEAF
+   * Strictly selection-locked: NEVER corrupts or modifies unrelated document code.
    */
   const handleApplyChanges = async (overrideReplacement?: string) => {
     const replacement = overrideReplacement || diffResult?.replacement;
@@ -257,42 +292,112 @@ export const App: React.FC = () => {
 
     try {
       let applied = false;
+      const fullDoc = await getFullContent();
 
-      // Case 1: Active selection exists with coordinates
-      if (selectionRange && !selectionRange.empty) {
+      // Guard: Check basic LaTeX syntax before applying
+      const syntaxCheck = validateLatex(replacement);
+      if (!syntaxCheck.valid && syntaxCheck.errors.length > 0) {
+        addToast('warning', `Notice: ${syntaxCheck.errors[0]}`);
+      }
+
+      let previousOriginalText = '';
+      let appliedFrom = -1;
+
+      // Priority 1: Exact coordinates captured when generation was triggered
+      if (pendingEdit && fullDoc && pendingEdit.fileName === currentFileName) {
+        const slice = fullDoc.slice(pendingEdit.from, pendingEdit.to);
+        if (slice === pendingEdit.text) {
+          applied = await replaceRange(pendingEdit.from, pendingEdit.to, replacement);
+          if (applied) {
+            appliedFrom = pendingEdit.from;
+            previousOriginalText = pendingEdit.text;
+          }
+        } else {
+          // If text shifted slightly due to typing elsewhere, find it locally near pendingEdit.from
+          const loc = findSnippetLocation(fullDoc, pendingEdit.text, pendingEdit.from);
+          if (loc) {
+            applied = await replaceRange(loc.from, loc.to, replacement);
+            if (applied) {
+              appliedFrom = loc.from;
+              previousOriginalText = loc.matchedText;
+            }
+          }
+        }
+      }
+
+      // Priority 2: Active selection in editor at this moment
+      if (!applied && selectionRange && !selectionRange.empty) {
         applied = await replaceRange(selectionRange.from, selectionRange.to, replacement);
-      } else if (selectedText && selectedText.trim().length > 0) {
-        // Case 2: Text selected
-        applied = await replaceSelection(replacement);
-      } else {
-        // Case 3: Patch into full document via fuzzy match
-        const fullDoc = await getFullContent();
-        if (fullDoc) {
-          const originalSnippet = diffResult?.original || currentLine?.text || '';
-          const patchResult = applyFuzzyPatch(fullDoc, originalSnippet, replacement);
+        if (applied) {
+          appliedFrom = selectionRange.from;
+          previousOriginalText = selectionRange.text;
+        }
+      }
 
-          if (patchResult.success) {
-            applied = await replaceRange(0, fullDoc.length, patchResult.patchedText);
+      // Priority 3: Safely locate target original snippet in document
+      if (!applied && fullDoc) {
+        const targetSnippet = diffResult?.original || selectedText || '';
+        if (targetSnippet.trim().length > 0) {
+          const loc = findSnippetLocation(fullDoc, targetSnippet, currentLine?.from);
+          if (loc) {
+            applied = await replaceRange(loc.from, loc.to, replacement);
+            if (applied) {
+              appliedFrom = loc.from;
+              previousOriginalText = loc.matchedText;
+            }
           }
         }
       }
 
       if (applied) {
-        addToast('success', `✓ Applied changes to ${currentFileName}`);
+        if (appliedFrom !== -1 && previousOriginalText) {
+          setLastRevertable({
+            from: appliedFrom,
+            to: appliedFrom + replacement.length,
+            previousText: previousOriginalText,
+            replacementText: replacement,
+            fileName: currentFileName,
+          });
+        }
+
+        addToast('success', `✓ Applied changes to ${currentFileName}`, {
+          label: '↩ Revert / Undo',
+          onClick: () => handleRevert(),
+        });
+
         reset();
         setActiveView('input');
+        setPendingEdit(null);
 
         if (settings.autoCollapseOnApply) {
           setIsOpen(false);
         }
       } else {
-        addToast('error', 'Failed to apply changes directly to editor. Check console.');
+        addToast(
+          'error',
+          'Could not safely locate the target selection to replace. Please select the bullet points in Overleaf before applying.'
+        );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       addToast('error', `Error applying patch: ${msg}`);
     } finally {
       setIsApplying(false);
+    }
+  };
+
+  const handleRevert = async () => {
+    if (!lastRevertable) return;
+    try {
+      const ok = await replaceRange(lastRevertable.from, lastRevertable.to, lastRevertable.previousText);
+      if (ok) {
+        addToast('info', `Reverted changes in ${lastRevertable.fileName}`);
+        setLastRevertable(null);
+      } else {
+        addToast('error', 'Could not automatically revert; please use Ctrl+Z in Overleaf.');
+      }
+    } catch {
+      addToast('error', 'Revert failed; use Ctrl+Z in Overleaf.');
     }
   };
 
