@@ -14,6 +14,7 @@ import { usePanelPosition } from './hooks/usePanelPosition';
 import { applyFuzzyPatch } from '../diff/apply';
 import { DiffResult } from '../diff/types';
 import { isExtensionContextValid } from '../messaging/runtime';
+import { AVAILABLE_MODELS } from '../messaging/types';
 import { RefreshCw } from 'lucide-react';
 
 export type AppView = 'input' | 'streaming' | 'diff' | 'edit' | 'settings';
@@ -308,7 +309,11 @@ export const App: React.FC = () => {
             selectedText={selectedText}
             currentFileName={currentFileName}
             settings={settings}
-            onUpdateModel={(provider, model) => updateSettings({ provider, model })}
+            onUpdateModel={(provider, model) => {
+              updateSettings({ provider, model });
+              const info = AVAILABLE_MODELS[provider]?.find((m) => m.id === model);
+              addToast('info', `Switched to ${info?.name || model}`);
+            }}
             onGenerate={handleGenerate}
             isGenerating={aiStatus === 'streaming'}
             onStop={handleStop}

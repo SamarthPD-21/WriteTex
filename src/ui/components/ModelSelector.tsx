@@ -36,15 +36,22 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   const displayName = activeModelInfo?.name || selectedModel;
 
+  // Shadow DOM-safe click outside handler using e.composedPath()
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const path = e.composedPath ? e.composedPath() : [];
+      if (dropdownRef.current && !path.includes(dropdownRef.current)) {
         setIsOpen(false);
       }
     };
     window.addEventListener('mousedown', handleClickOutside);
     return () => window.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleSelect = (provider: AIProviderId, modelId: string) => {
+    onSelectModel(provider, modelId);
+    setIsOpen(false);
+  };
 
   const renderBadge = (badge?: ModelBadge) => {
     if (!badge) return null;
@@ -70,7 +77,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   const providersToShow: AIProviderId[] =
     activeTab === 'all'
-      ? (['meta', 'gemini', 'openai', 'anthropic'] as AIProviderId[])
+      ? (['gemini', 'meta', 'openai', 'anthropic'] as AIProviderId[])
       : [activeTab];
 
   return (
@@ -78,17 +85,27 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       {/* Trigger Button */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
         className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-text-primary bg-bg-secondary hover:bg-bg-tertiary border border-border hover:border-accent/40 rounded-xl transition-all duration-150 shadow-sm active:scale-95"
       >
-        <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
-        <span className="truncate max-w-[140px] font-semibold text-[11.5px]">{displayName}</span>
-        <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+        <span className="truncate max-w-[145px] font-semibold text-[11.5px]">{displayName}</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-text-muted transition-transform duration-150 ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+        />
       </button>
 
       {/* Popover Dropdown */}
       {isOpen && (
-        <div className="absolute bottom-full mb-2 left-0 z-50 w-72 p-2 bg-[#1b1b28]/98 border border-border/80 rounded-2xl shadow-panel backdrop-blur-xl animate-panel-in flex flex-col gap-2">
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute bottom-full mb-2 left-0 z-50 w-72 p-2 bg-[#1b1b28]/98 border border-border/80 rounded-2xl shadow-panel backdrop-blur-xl animate-panel-in flex flex-col gap-2 ring-1 ring-white/10"
+        >
           {/* Header & Filter Tabs */}
           <div className="flex items-center justify-between px-1 pt-0.5 pb-1 border-b border-border-subtle">
             <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1">
@@ -99,10 +116,14 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
           {/* Quick Provider Filters */}
           <div className="flex items-center gap-1 px-0.5 overflow-x-auto no-scrollbar">
-            {(['all', 'meta', 'gemini', 'openai', 'anthropic'] as const).map((tab) => (
+            {(['all', 'gemini', 'meta', 'openai', 'anthropic'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  setActiveTab(tab);
+                }}
                 onClick={() => setActiveTab(tab)}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors ${
                   activeTab === tab
@@ -112,10 +133,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               >
                 {tab === 'all'
                   ? 'All'
-                  : tab === 'meta'
-                  ? 'Meta'
                   : tab === 'gemini'
                   ? 'Gemini'
+                  : tab === 'meta'
+                  ? 'Meta'
                   : tab === 'openai'
                   ? 'OpenAI'
                   : 'Claude'}
@@ -124,14 +145,14 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           </div>
 
           {/* Model List */}
-          <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
+          <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1 no-scrollbar">
             {providersToShow.map((providerKey) => {
               const models = AVAILABLE_MODELS[providerKey] || [];
               return (
                 <div key={providerKey} className="flex flex-col gap-1">
                   <div className="px-1.5 pt-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
-                    {providerKey === 'meta' && <Zap className="w-3 h-3 text-indigo-400" />}
                     {providerKey === 'gemini' && <Cpu className="w-3 h-3 text-blue-400" />}
+                    {providerKey === 'meta' && <Zap className="w-3 h-3 text-indigo-400" />}
                     {providerKey === 'openai' && <Layers className="w-3 h-3 text-emerald-400" />}
                     {providerKey === 'anthropic' && <Brain className="w-3 h-3 text-amber-400" />}
                     <span>{PROVIDER_NAMES[providerKey]}</span>
@@ -143,14 +164,18 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                       <button
                         key={model.id}
                         type="button"
-                        onClick={() => {
-                          onSelectModel(model.provider, model.id);
-                          setIsOpen(false);
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          handleSelect(model.provider, model.id);
                         }}
-                        className={`w-full flex items-start justify-between px-2 py-1.5 rounded-xl text-left transition-all duration-150 ${
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelect(model.provider, model.id);
+                        }}
+                        className={`w-full flex items-start justify-between px-2.5 py-1.5 rounded-xl text-left transition-all duration-150 ${
                           isSelected
-                            ? 'bg-accent/20 border border-accent/40 text-white font-medium shadow-sm'
-                            : 'hover:bg-bg-tertiary/70 text-text-primary border border-transparent'
+                            ? 'bg-accent/25 border border-accent/50 text-white font-medium shadow-sm ring-1 ring-accent/30'
+                            : 'hover:bg-bg-tertiary/80 text-text-primary border border-transparent'
                         }`}
                       >
                         <div className="flex flex-col gap-0.5 flex-1 min-w-0 pr-2">
