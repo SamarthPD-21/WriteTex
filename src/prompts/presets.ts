@@ -183,6 +183,15 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
       '4. Escape % as \\%, & as \\& (except in tabular columns), and $ as \\$.\n' +
       '5. Return ONLY the corrected compilable LaTeX code with no conversational filler.',
   },
+  {
+    id: 'action_restore_preamble',
+    category: 'action',
+    label: 'Restore Preamble',
+    icon: '📑',
+    description: 'Restore missing \\documentclass, packages, custom resume commands, and \\begin{document}',
+    userPrompt:
+      'Generate the complete missing preamble for Jake\'s Resume: include \\documentclass[letterpaper,11pt]{article}, packages (latexsym, fullpage, titlesec, marvosym, color, verbatim, enumitem, hyperref, fancyhdr, babel, tabularx), custom macros (\\resumeItem, \\resumeSubheading, \\resumeSubSubheading, \\resumeProjectHeading, \\resumeSubHeadingListStart/End, \\resumeItemListStart/End), margins, and \\begin{document}. Return ONLY the valid preamble block.',
+  },
 ];
 
 export const ROLE_PRESETS: ResumePreset[] = [
