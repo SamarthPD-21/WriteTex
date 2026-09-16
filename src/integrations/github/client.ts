@@ -101,6 +101,8 @@ export async function analyzeGitHubProfile(
         username: parsed.username,
         profileUrl: `https://github.com/${parsed.username}`,
         publicReposCount: 1,
+        totalStars: repo.stars,
+        totalForks: repo.forks,
         topLanguages: [{ language: repo.language, count: 1 }],
         allTopics: repo.topics,
         topProjects: [repo],
@@ -168,6 +170,8 @@ export async function analyzeGitHubProfile(
 
     // Rank by role
     const rankedRepos = rankRepositoriesByRole(mappedRepos, targetRoleKey);
+    const totalStars = mappedRepos.reduce((sum, r) => sum + (r.stars || 0), 0);
+    const totalForks = mappedRepos.reduce((sum, r) => sum + (r.forks || 0), 0);
 
     const result: GitHubAnalysisResult = {
       username: rawUser.login,
@@ -176,6 +180,8 @@ export async function analyzeGitHubProfile(
       avatarUrl: rawUser.avatar_url,
       profileUrl: rawUser.html_url,
       publicReposCount: rawUser.public_repos,
+      totalStars,
+      totalForks,
       topLanguages,
       allTopics: Array.from(topicsSet),
       topProjects: rankedRepos.slice(0, 4),

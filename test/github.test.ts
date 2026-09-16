@@ -163,3 +163,68 @@ describe('Role-Based GitHub Project Ranker', () => {
     expect((sweProject?.relevanceScore || 0)).toBeGreaterThan(fork?.relevanceScore || 0);
   });
 });
+
+describe('GitHub LaTeX Formatter', () => {
+  const sampleRepo: GitHubRepo = {
+    name: 'distributed-raft-kv',
+    fullName: 'user/distributed-raft-kv',
+    description: 'Distributed consensus key-value store using Raft, gRPC, and high throughput cache',
+    url: 'https://github.com/user/distributed-raft-kv',
+    htmlUrl: 'https://github.com/user/distributed-raft-kv',
+    language: 'Go',
+    stars: 120,
+    forks: 15,
+    updatedAt: new Date().toISOString(),
+    topics: ['distributed-systems', 'grpc', 'raft'],
+    isFork: false,
+    roleMatchReason: 'Highlights distributed systems engineering and backend scalability.',
+    selected: true,
+  };
+
+  it('formats a single project into \\resumeProjectHeading with XYZ bullets', async () => {
+    const { formatProjectToLatex } = await import('../src/integrations/github/formatter');
+    const latex = formatProjectToLatex(sampleRepo);
+
+    expect(latex).toContain('\\resumeProjectHeading');
+    expect(latex).toContain('\\textbf{distributed-raft-kv}');
+    expect(latex).toContain('Go, distributed-systems');
+    expect(latex).toContain('120 Stars');
+    expect(latex).toContain('\\resumeItemListStart');
+    expect(latex).toContain('\\resumeItem{');
+    expect(latex).toContain('Distributed consensus key-value store');
+    expect(latex).toContain('\\resumeItemListEnd');
+  });
+
+  it('formats all selected projects into a complete \\section{Projects}', async () => {
+    const { formatAllProjectsToLatex } = await import('../src/integrations/github/formatter');
+    const latex = formatAllProjectsToLatex([sampleRepo]);
+
+    expect(latex).toContain('\\section{Projects}');
+    expect(latex).toContain('\\resumeSubHeadingListStart');
+    expect(latex).toContain('\\resumeProjectHeading');
+    expect(latex).toContain('\\resumeSubHeadingListEnd');
+  });
+
+  it('formats extracted GitHub skills into a LaTeX \\section{Technical Skills}', async () => {
+    const { formatGitHubSkillsToLatex } = await import('../src/integrations/github/formatter');
+    const latex = formatGitHubSkillsToLatex({
+      username: 'user',
+      profileUrl: 'https://github.com/user',
+      publicReposCount: 10,
+      totalStars: 570,
+      topLanguages: [
+        { language: 'Go', count: 5 },
+        { language: 'Python', count: 3 },
+      ],
+      allTopics: ['docker', 'kubernetes', 'grpc', 'raft'],
+      topProjects: [sampleRepo],
+      allProjects: [sampleRepo],
+      analyzedAt: Date.now(),
+    });
+
+    expect(latex).toContain('\\section{Technical Skills}');
+    expect(latex).toContain('\\textbf{Languages}{: Go, Python}');
+    expect(latex).toContain('\\textbf{Frameworks \\& Tools}{:');
+  });
+});
+

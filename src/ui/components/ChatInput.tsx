@@ -26,6 +26,7 @@ import {
   GitFork,
   CheckCircle2,
   AlertOctagon,
+  ArrowRight,
 } from 'lucide-react';
 import {
   BasePreset,
@@ -45,6 +46,11 @@ import { analyzeKeywordGap } from '../../analysis/keyword-gap';
 import { KeywordGapView } from './KeywordGapView';
 import { scrapeOverleafErrors, OverleafDiagnosticsResult, OverleafLogEntry } from '../../adapters/overleaf/error-scraper';
 import { autoRepairLatexDocument } from '../../latex/auto-repair';
+import {
+  formatProjectToLatex,
+  formatAllProjectsToLatex,
+  formatGitHubSkillsToLatex,
+} from '../../integrations/github/formatter';
 
 const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-3.5 h-3.5' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -135,6 +141,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [githubAnalysis, setGithubAnalysis] = useState<GitHubAnalysisResult | null>(null);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [isGithubExpanded, setIsGithubExpanded] = useState<boolean>(false);
+  const [selectedLanguageFilter, setSelectedLanguageFilter] = useState<string | null>(null);
 
   // Prompt and preset state
   const [prompt, setPrompt] = useState<string>('');
@@ -289,21 +296,44 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleTriggerGitHubAction = (
-    actionId: 'action_github_projects' | 'action_github_skills' | 'cl_github_story'
+    actionId: 'action_github_projects' | 'action_github_skills' | 'cl_github_story',
+    autoRun = false
   ) => {
     setActivePresetId(actionId);
+    let actionPrompt = '';
     if (actionId === 'action_github_projects') {
-      setPrompt(
-        'Transform the analyzed top GitHub projects into a high-impact LaTeX Projects section using \\resumeProjectHeading and Google XYZ bullets.'
-      );
+      actionPrompt =
+        'Transform the analyzed top GitHub projects into a high-impact LaTeX Projects section using \\resumeProjectHeading and Google XYZ bullets.';
     } else if (actionId === 'action_github_skills') {
-      setPrompt(
-        'Extract tech stack from my analyzed GitHub repos and update the LaTeX technical skills matrix.'
-      );
+      actionPrompt =
+        'Extract tech stack from my analyzed GitHub repos and update the LaTeX technical skills matrix.';
     } else if (actionId === 'cl_github_story') {
-      setPrompt(
-        'Craft a compelling STAR technical narrative highlighting my key GitHub project in this cover letter.'
-      );
+      actionPrompt =
+        'Craft a compelling STAR technical narrative highlighting my key GitHub project in this cover letter.';
+    }
+
+    setPrompt(actionPrompt);
+
+    if (autoRun) {
+      let finalPrompt = actionPrompt;
+      if (targetCompany && !finalPrompt.includes(targetCompany)) {
+        finalPrompt = `[Target Company: ${targetCompany}] ${finalPrompt}`;
+      }
+      if (targetRole && !finalPrompt.includes(targetRole)) {
+        finalPrompt = `[Target Role: ${targetRole}] ${finalPrompt}`;
+      }
+
+      onGenerate(finalPrompt, actionId, {
+        docMode,
+        targetCompany: targetCompany.trim() || undefined,
+        targetRole: targetRole.trim() || undefined,
+        jobDescription: jobDescription.trim() || undefined,
+        githubAnalysis: githubAnalysis || undefined,
+        overleafErrors: diagnostics?.entries,
+        hasNoPdf: diagnostics?.hasNoPdf,
+      });
+      setPrompt('');
+      setActivePresetId(null);
     }
   };
 
@@ -611,8 +641,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <div className="flex flex-col gap-1.5 pt-1.5 border-t border-white/[0.06] text-xs">
             {!githubAnalysis ? (
               <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-1.5">
-                  <GithubIcon className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                {/* 100% Flush Input Bar */}
+                <div className="relative flex items-stretch bg-[#0d0d16] border border-white/[0.1] rounded-xl focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500/30 overflow-hidden shadow-inner transition-all">
+                  <div className="flex items-center pl-3 text-zinc-400 shrink-0">
+                    <GithubIcon className="w-3.5 h-3.5" />
+                  </div>
                   <input
                     type="text"
                     value={githubUrl}
@@ -623,22 +656,35 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                         handleAnalyzeGithub();
                       }
                     }}
-                    placeholder="GitHub profile or repo (e.g. github.com/username)..."
-                    className="flex-1 px-2.5 py-1 bg-[#0d0d16] border border-white/[0.08] rounded-lg text-[11px] text-zinc-200 placeholder:text-zinc-400 outline-none focus:border-indigo-500 transition-colors"
+                    placeholder="GitHub profile or repo (e.g. github.com/username or @handle)..."
+                    className="flex-1 bg-transparent px-2.5 py-1.5 text-[11px] text-zinc-100 placeholder:text-zinc-500 outline-none min-w-0"
                   />
+                  {githubUrl && !isAnalyzingGithub && (
+                    <button
+                      type="button"
+                      onClick={() => setGithubUrl('')}
+                      className="px-1.5 text-zinc-500 hover:text-zinc-300 transition-colors shrink-0 flex items-center"
+                      title="Clear"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleAnalyzeGithub()}
                     disabled={!githubUrl.trim() || isAnalyzingGithub}
-                    className="px-2.5 py-1 bg-white/[0.08] hover:bg-white/[0.12] disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 rounded-lg text-[11px] font-medium transition-colors shrink-0 flex items-center gap-1"
+                    className="px-3.5 py-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[11px] font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 shrink-0 border-l border-white/[0.08]"
                   >
                     {isAnalyzingGithub ? (
                       <>
-                        <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
                         <span>Analyzing...</span>
                       </>
                     ) : (
-                      <span>Analyze</span>
+                      <>
+                        <span>Analyze</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </>
                     )}
                   </button>
                 </div>
@@ -647,25 +693,59 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 )}
               </div>
             ) : (
-              <div className="flex flex-col gap-2 bg-[#0d0d16] border border-white/[0.06] p-2.5 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <GithubIcon className="w-3.5 h-3.5 text-white shrink-0" />
-                    <a
-                      href={githubAnalysis.profileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-zinc-100 font-semibold text-[11.5px] hover:underline flex items-center gap-1 truncate"
-                    >
-                      <span>@{githubAnalysis.username}</span>
-                      <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-                    </a>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-medium shrink-0">
-                      {githubAnalysis.topProjects.filter((p) => p.selected !== false).length} / {githubAnalysis.topProjects.length} selected
-                    </span>
+              <div className="flex flex-col gap-2 bg-[#0d0d16] border border-white/[0.08] p-2.5 rounded-xl shadow-xs">
+                {/* Header: Candidate Avatar + Name + Badges */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                    {githubAnalysis.avatarUrl ? (
+                      <img
+                        src={githubAnalysis.avatarUrl}
+                        alt={githubAnalysis.username}
+                        className="w-6 h-6 rounded-full border border-white/20 shrink-0 object-cover"
+                      />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                        <GithubIcon className="w-3.5 h-3.5 text-white" />
+                      </div>
+                    )}
+                    <div className="flex flex-col min-w-0 truncate">
+                      <div className="flex items-center gap-1.5 truncate">
+                        {githubAnalysis.name && (
+                          <span className="text-zinc-100 font-semibold text-[11.5px] truncate">
+                            {githubAnalysis.name}
+                          </span>
+                        )}
+                        <a
+                          href={githubAnalysis.profileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-zinc-400 hover:text-indigo-300 text-[11px] font-mono flex items-center gap-0.5 truncate transition-colors"
+                        >
+                          <span>@{githubAnalysis.username}</span>
+                          <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                        </a>
+                      </div>
+                      {githubAnalysis.bio && (
+                        <div className="text-[9.5px] text-zinc-400 truncate max-w-[200px]">
+                          {githubAnalysis.bio}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
+                  {/* Badges & Actions */}
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {(githubAnalysis.totalStars ?? 0) > 0 && (
+                      <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[9.5px] font-medium">
+                        <Star className="w-2.5 h-2.5 fill-current" />
+                        <span>{githubAnalysis.totalStars}</span>
+                      </span>
+                    )}
+
+                    <span className="text-[9.5px] px-1.5 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/25 text-indigo-300 font-medium">
+                      {githubAnalysis.topProjects.filter((p) => p.selected !== false).length} / {githubAnalysis.topProjects.length}
+                    </span>
+
                     <button
                       type="button"
                       onClick={() => setIsGithubExpanded(!isGithubExpanded)}
@@ -681,6 +761,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                         setGithubAnalysis(null);
                         setGithubUrl('');
                         setIsGithubExpanded(false);
+                        setSelectedLanguageFilter(null);
                       }}
                       className="p-0.5 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
                       title="Remove GitHub profile"
@@ -690,27 +771,59 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   </div>
                 </div>
 
-                {/* Top Languages badges */}
+                {/* Filterable Language Chips */}
                 {githubAnalysis.topLanguages && githubAnalysis.topLanguages.length > 0 && (
-                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar text-[9.5px] text-zinc-400">
-                    <Code2 className="w-3 h-3 shrink-0 text-zinc-400" />
-                    {githubAnalysis.topLanguages.slice(0, 4).map((l) => (
-                      <span key={l.language} className="px-1.5 py-0.5 rounded bg-white/[0.04] font-mono text-zinc-300">
-                        {l.language}
-                      </span>
-                    ))}
+                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar text-[9.5px] pt-1 border-t border-white/[0.04]">
+                    <span className="text-zinc-500 shrink-0 font-medium">Filter:</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLanguageFilter(null)}
+                      className={`px-1.5 py-0.5 rounded-md font-mono transition-colors shrink-0 ${
+                        selectedLanguageFilter === null
+                          ? 'bg-indigo-600 text-white font-semibold'
+                          : 'bg-white/[0.04] text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      All ({githubAnalysis.topProjects.length})
+                    </button>
+                    {githubAnalysis.topLanguages.slice(0, 5).map((l) => {
+                      const isActive = selectedLanguageFilter?.toLowerCase() === l.language.toLowerCase();
+                      return (
+                        <button
+                          key={l.language}
+                          type="button"
+                          onClick={() =>
+                            setSelectedLanguageFilter(isActive ? null : l.language)
+                          }
+                          className={`px-1.5 py-0.5 rounded-md font-mono transition-colors shrink-0 ${
+                            isActive
+                              ? 'bg-indigo-600 text-white font-semibold'
+                              : 'bg-white/[0.04] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.08]'
+                          }`}
+                        >
+                          {l.language} ({l.count})
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
                 {/* Expandable Project List */}
                 {isGithubExpanded && (
                   <div className="flex flex-col gap-1.5 pt-1.5 border-t border-white/[0.06] animate-in fade-in duration-150">
-                    <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-                      Role-Ranked Projects ({targetRole || 'General'}):
+                    <div className="flex items-center justify-between text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                      <span>Role-Ranked Projects ({targetRole || 'General'}):</span>
+                      <span className="text-zinc-500 lowercase font-normal">click to toggle / copy</span>
                     </div>
 
-                    {githubAnalysis.topProjects.map((project) => {
+                    {(selectedLanguageFilter
+                      ? githubAnalysis.allProjects.filter(
+                          (p) => (p.language || '').toLowerCase() === selectedLanguageFilter.toLowerCase()
+                        )
+                      : githubAnalysis.topProjects
+                    ).map((project) => {
                       const isSelected = project.selected !== false;
+                      const projectSnippet = formatProjectToLatex(project);
                       return (
                         <div
                           key={project.name}
@@ -732,7 +845,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                               <span className="font-semibold text-zinc-200 text-[11px] truncate">
                                 {project.name}
                               </span>
-                              <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-white/[0.08] text-zinc-300">
+                              <span className="text-[9.5px] font-mono px-1 py-0.2 rounded bg-white/[0.08] text-zinc-300">
                                 {project.language}
                               </span>
                             </div>
@@ -750,6 +863,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                                   {project.forks}
                                 </span>
                               )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCopy(project.name, projectSnippet);
+                                }}
+                                title="Copy LaTeX for this project"
+                                className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                              >
+                                {copiedId === project.name ? (
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
                             </div>
                           </div>
 
@@ -767,49 +895,118 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+                )}
 
-                    {/* Quick Action Buttons */}
-                    <div className="flex items-center gap-1.5 pt-1">
-                      {docMode === 'resume' ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTriggerGitHubAction('action_github_projects');
-                            }}
-                            className="flex-1 py-1 rounded-lg text-[10.5px] font-semibold bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 flex items-center justify-center gap-1 transition-colors"
-                          >
-                            <Sparkles className="w-3 h-3" />
-                            <span>+ Add to Resume</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTriggerGitHubAction('action_github_skills');
-                            }}
-                            className="py-1 px-2.5 rounded-lg text-[10.5px] font-medium bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 transition-colors"
-                          >
-                            <span>Sync Skills</span>
-                          </button>
-                        </>
-                      ) : (
+                {/* Flush Action Bar */}
+                <div className="flex items-stretch rounded-lg border border-white/[0.1] bg-[#12121e] overflow-hidden divide-x divide-white/[0.08] shadow-xs mt-0.5">
+                  {docMode === 'resume' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTriggerGitHubAction('action_github_projects', true);
+                        }}
+                        className="flex-1 py-1.5 px-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-[10.5px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.99]"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>⚡ Auto-Generate with AI</span>
+                      </button>
+
+                      {onApplyDirect && (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleTriggerGitHubAction('cl_github_story');
+                            const latex = formatAllProjectsToLatex(githubAnalysis.topProjects);
+                            onApplyDirect(latex);
                           }}
-                          className="flex-1 py-1 rounded-lg text-[10.5px] font-semibold bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 flex items-center justify-center gap-1 transition-colors"
+                          title="Directly insert standard Jake's Resume project block into Overleaf"
+                          className="py-1.5 px-2.5 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-white font-medium text-[10.5px] flex items-center justify-center gap-1 transition-colors"
                         >
-                          <Sparkles className="w-3 h-3" />
-                          <span>Weave Project Story into Letter</span>
+                          <Wand2 className="w-3 h-3 text-amber-400" />
+                          <span>Insert Block</span>
                         </button>
                       )}
-                    </div>
-                  </div>
-                )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const latex = formatAllProjectsToLatex(githubAnalysis.topProjects);
+                          handleCopy('all_github_projects', latex);
+                        }}
+                        className="py-1.5 px-2.5 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-white font-medium text-[10.5px] flex items-center justify-center gap-1 transition-colors"
+                      >
+                        {copiedId === 'all_github_projects' ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span className="text-emerald-400 font-semibold">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy LaTeX</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const skillsLatex = formatGitHubSkillsToLatex(githubAnalysis);
+                          if (onApplyDirect) {
+                            onApplyDirect(skillsLatex);
+                          } else {
+                            handleCopy('github_skills', skillsLatex);
+                          }
+                          handleTriggerGitHubAction('action_github_skills', true);
+                        }}
+                        title="Sync and format technical skills from GitHub languages & topics"
+                        className="py-1.5 px-2.5 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-white font-medium text-[10.5px] flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Code2 className="w-3 h-3 text-indigo-400" />
+                        <span>Sync Skills</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTriggerGitHubAction('cl_github_story', true);
+                        }}
+                        className="flex-1 py-1.5 px-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-[10.5px] flex items-center justify-center gap-1.5 transition-all"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>⚡ Weave Story into Letter</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const first = githubAnalysis.topProjects[0];
+                          const text = first
+                            ? `During my development of ${first.name}, I architected ${first.description || 'a robust solution'} using ${first.language}, which demonstrated ${first.roleMatchReason || 'production-grade performance'}.`
+                            : '';
+                          handleCopy('cl_github_story', text);
+                        }}
+                        className="py-1.5 px-2.5 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-white font-medium text-[10.5px] flex items-center justify-center gap-1 transition-colors"
+                      >
+                        {copiedId === 'cl_github_story' ? (
+                          <Check className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                        <span>Copy Story</span>
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1193,14 +1390,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       <div className="relative z-30 px-3.5 py-2.5 bg-[#131320] border-t border-white/[0.08] flex items-center justify-between gap-2 shrink-0">
         <ModelSelector selectedModel={settings.model} onSelectModel={onUpdateModel} />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center rounded-xl overflow-hidden border border-white/[0.1] shadow-md divide-x divide-white/[0.1] bg-[#161626]">
           {/* Document auto-repair quick button if available */}
           {onAutoRepair && (
             <button
               type="button"
               onClick={onAutoRepair}
               title="1-Click Fix LaTeX macro errors and restored preamble"
-              className="px-2.5 py-1.5 rounded-xl text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 transition-all active:scale-95 flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs font-medium bg-[#1a1a2b] hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 transition-colors flex items-center gap-1.5 active:scale-[0.98]"
             >
               <Wand2 className="w-3.5 h-3.5 text-amber-400" />
               <span>Fix LaTeX</span>
@@ -1211,7 +1408,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <button
               type="button"
               onClick={onStop}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold text-rose-200 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 shadow-md transition-all duration-150 active:scale-95 animate-pulse"
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-rose-200 bg-rose-500/30 hover:bg-rose-500/40 transition-all active:scale-95 animate-pulse"
             >
               <Square className="w-3.5 h-3.5 fill-current" />
               <span>Stop</span>
@@ -1221,7 +1418,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               type="button"
               onClick={() => handleSubmit()}
               disabled={(!prompt.trim() && !activePresetId) || !hasApiKey}
-              className="flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-indigo-500/25 transition-all duration-150 active:scale-95"
+              className="flex items-center gap-2 px-4 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Generate</span>

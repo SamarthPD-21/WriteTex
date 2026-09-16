@@ -22,6 +22,8 @@ export interface GitHubAnalysisResult {
   avatarUrl?: string;
   profileUrl: string;
   publicReposCount: number;
+  totalStars?: number;
+  totalForks?: number;
   topLanguages: { language: string; count: number }[];
   allTopics: string[];
   topProjects: GitHubRepo[];
