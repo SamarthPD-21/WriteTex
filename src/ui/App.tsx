@@ -11,8 +11,9 @@ import { useEditor } from './hooks/useEditor';
 import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
 import { usePanelPosition } from './hooks/usePanelPosition';
-import { findSnippetLocation } from '../diff/apply';
+import { locateWrongSnippetInDoc } from '../diff/smart-replace';
 import { validateLatex } from '../latex/validator';
+import { autoRepairLatexDocument } from '../latex/auto-repair';
 import { DiffResult } from '../diff/types';
 import { isExtensionContextValid } from '../messaging/runtime';
 import {
@@ -290,15 +291,21 @@ export const App: React.FC = () => {
    * TRANSACTIONAL APPLICATION OF EDITS DIRECTLY INTO OVERLEAF
    * Strictly selection-locked: NEVER corrupts or modifies unrelated document code.
    */
-  const handleApplyChanges = async (overrideReplacement?: string) => {
+  const handleApplyChanges = async (
+    overrideReplacement?: string,
+    targetOriginal?: string
+  ) => {
     const replacement = overrideReplacement || diffResult?.replacement;
     if (!replacement) return;
 
     setIsApplying(true);
 
     try {
-      let applied = false;
       const fullDoc = await getFullContent();
+      if (!fullDoc) {
+        addToast('error', 'Could not access document content in Overleaf.');
+        return;
+      }
 
       // Guard: Check basic LaTeX syntax before applying
       const syntaxCheck = validateLatex(replacement);
@@ -306,8 +313,10 @@ export const App: React.FC = () => {
         addToast('warning', `Notice: ${syntaxCheck.errors[0]}`);
       }
 
+      let applied = false;
       let previousOriginalText = '';
       let appliedFrom = -1;
+      let appliedActionDesc = 'Replaced snippet';
 
       // Priority 1: Exact coordinates captured when generation was triggered
       if (pendingEdit && fullDoc && pendingEdit.fileName === currentFileName) {
@@ -317,46 +326,40 @@ export const App: React.FC = () => {
           if (applied) {
             appliedFrom = pendingEdit.from;
             previousOriginalText = pendingEdit.text;
-          }
-        } else {
-          // If text shifted slightly due to typing elsewhere, find it locally near pendingEdit.from
-          const loc = findSnippetLocation(fullDoc, pendingEdit.text, pendingEdit.from);
-          if (loc) {
-            applied = await replaceRange(loc.from, loc.to, replacement);
-            if (applied) {
-              appliedFrom = loc.from;
-              previousOriginalText = loc.matchedText;
-            }
+            appliedActionDesc = 'Replaced selected snippet';
           }
         }
       }
 
-      // Priority 2: Active selection in editor at this moment
-      if (!applied && selectionRange && !selectionRange.empty) {
-        applied = await replaceRange(selectionRange.from, selectionRange.to, replacement);
-        if (applied) {
-          appliedFrom = selectionRange.from;
-          previousOriginalText = selectionRange.text;
-        }
-      }
+      // Priority 2: Intelligent Smart Replacement locator (locates the exact wrong snippet in fullDoc)
+      if (!applied) {
+        const loc = locateWrongSnippetInDoc(fullDoc, replacement, {
+          originalSnippet: targetOriginal || diffResult?.original || pendingEdit?.text || selectedText,
+          approximateIndex: pendingEdit?.from ?? currentLine?.from,
+          activeSelection: selectionRange && !selectionRange.empty ? selectionRange : undefined,
+        });
 
-      // Priority 3: Safely locate target original snippet in document
-      if (!applied && fullDoc) {
-        const targetSnippet = diffResult?.original || selectedText || '';
-        if (targetSnippet.trim().length > 0) {
-          const loc = findSnippetLocation(fullDoc, targetSnippet, currentLine?.from);
-          if (loc) {
-            applied = await replaceRange(loc.from, loc.to, replacement);
-            if (applied) {
-              appliedFrom = loc.from;
-              previousOriginalText = loc.matchedText;
-            }
+        if (loc) {
+          applied = await replaceRange(loc.from, loc.to, replacement);
+          if (applied) {
+            appliedFrom = loc.from;
+            previousOriginalText = loc.matchedText;
+            appliedActionDesc =
+              loc.reason === 'section_match'
+                ? 'Replaced matching section'
+                : loc.reason === 'content_anchor'
+                ? 'Replaced matching code block'
+                : loc.reason === 'preamble'
+                ? 'Restored complete preamble'
+                : loc.reason === 'bullet_match'
+                ? 'Replaced matching bullets'
+                : 'Replaced selected snippet';
           }
         }
       }
 
       if (applied) {
-        if (appliedFrom !== -1 && previousOriginalText) {
+        if (appliedFrom !== -1 && previousOriginalText !== undefined) {
           setLastRevertable({
             from: appliedFrom,
             to: appliedFrom + replacement.length,
@@ -366,7 +369,7 @@ export const App: React.FC = () => {
           });
         }
 
-        addToast('success', `✓ Applied changes to ${currentFileName}`, {
+        addToast('success', `✓ ${appliedActionDesc} in ${currentFileName}`, {
           label: '↩ Revert / Undo',
           onClick: () => handleRevert(),
         });
@@ -380,13 +383,54 @@ export const App: React.FC = () => {
         }
       } else {
         addToast(
-          'error',
-          'Could not safely locate the target selection to replace. Please select the bullet points in Overleaf before applying.'
+          'warning',
+          'Could not automatically detect the matching snippet to replace. Please highlight the wrong code in Overleaf and click Apply.'
         );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      addToast('error', `Error applying patch: ${msg}`);
+      addToast('error', `Error applying replacement: ${msg}`);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleAutoRepairDocument = async () => {
+    setIsApplying(true);
+    try {
+      const fullDoc = await getFullContent();
+      if (!fullDoc) {
+        addToast('error', 'Could not access document content in Overleaf.');
+        return;
+      }
+
+      const repairResult = autoRepairLatexDocument(fullDoc);
+      if (!repairResult.wasRepaired) {
+        addToast('info', 'No corrupted macros or missing preamble detected in this document.');
+        return;
+      }
+
+      const ok = await replaceRange(0, fullDoc.length, repairResult.repairedDoc);
+      if (ok) {
+        setLastRevertable({
+          from: 0,
+          to: repairResult.repairedDoc.length,
+          previousText: fullDoc,
+          replacementText: repairResult.repairedDoc,
+          fileName: currentFileName,
+        });
+
+        const fixesSummary = repairResult.repairsMade.slice(0, 3).join(', ');
+        addToast('success', `✓ Repaired LaTeX document (${fixesSummary})`, {
+          label: '↩ Revert / Undo',
+          onClick: () => handleRevert(),
+        });
+      } else {
+        addToast('error', 'Failed to update document in Overleaf.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast('error', `Repair failed: ${msg}`);
     } finally {
       setIsApplying(false);
     }
@@ -464,7 +508,8 @@ export const App: React.FC = () => {
               setDiffResult(diff);
               setActiveView('diff');
             }}
-            onApplyDirect={(text: string) => handleApplyChanges(text)}
+            onApplyDirect={(text: string, original?: string) => handleApplyChanges(text, original)}
+            onAutoRepair={handleAutoRepairDocument}
             onClearHistory={() => setHistory([])}
           />
         )}

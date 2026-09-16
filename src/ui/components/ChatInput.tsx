@@ -78,7 +78,8 @@ interface ChatInputProps {
   onOpenSettings: () => void;
   history?: HistoryItem[];
   onViewDiff?: (diff: DiffResult) => void;
-  onApplyDirect?: (text: string) => void;
+  onApplyDirect?: (text: string, originalSnippet?: string) => void;
+  onAutoRepair?: () => void;
   onClearHistory?: () => void;
 }
 
@@ -94,6 +95,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   history = [],
   onViewDiff,
   onApplyDirect,
+  onAutoRepair,
   onClearHistory,
 }) => {
   // Document mode: 'resume' vs 'cover_letter'
@@ -777,7 +779,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 {onApplyDirect && (
                   <button
                     type="button"
-                    onClick={() => onApplyDirect(item.response)}
+                    onClick={() => onApplyDirect(item.response, item.diffResult?.original)}
                     className="px-2 py-0.5 rounded text-[10px] bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 font-medium border border-emerald-800/40"
                   >
                     Apply
@@ -861,6 +863,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <Wand2 className="w-3 h-3" />
                 <span>Resume Polish</span>
               </button>
+
+              {onAutoRepair && (
+                <button
+                  type="button"
+                  onClick={onAutoRepair}
+                  title="Auto-repair corrupted macros (sumeSubheading, resumeItemListEnd, missing backslashes) and restore missing Jake's Resume preamble"
+                  className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-medium flex items-center gap-1 border border-amber-500/40 transition-colors ml-1 active:scale-95"
+                >
+                  <Wand2 className="w-2.5 h-2.5 text-amber-400" />
+                  <span>1-Click Fix Document Errors</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2">
