@@ -183,6 +183,7 @@ export const AVAILABLE_MODELS: Record<AIProviderId, ModelInfo[]> = {
 };
 
 import { GitHubAnalysisResult } from '../integrations/github/types';
+import { OverleafLogEntry } from '../adapters/overleaf/error-scraper';
 
 export type DocumentMode = 'resume' | 'cover_letter';
 
@@ -200,6 +201,8 @@ export interface EditorContext {
   targetRole?: string;
   jobDescription?: string;
   githubAnalysis?: GitHubAnalysisResult;
+  overleafErrors?: OverleafLogEntry[];
+  hasNoPdf?: boolean;
 }
 
 export interface GenerateRequest {

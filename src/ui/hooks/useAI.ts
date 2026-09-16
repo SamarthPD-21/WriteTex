@@ -55,8 +55,22 @@ export function useAI(settings: Settings) {
           setStatus('done');
           setStreamedText(finalOutput);
 
-          // If there was a selection, compute diff between original and replacement
-          const original = context.selectedText || context.currentLineText || '';
+          // If there was a selection, compute diff between original and replacement.
+          // Fall back to document content for error fixing / full document repair.
+          let original = context.selectedText || '';
+          if (!original.trim()) {
+            if (
+              context.hasNoPdf ||
+              (context.overleafErrors && context.overleafErrors.length > 0) ||
+              finalOutput.includes('\\documentclass') ||
+              finalOutput.includes('\\begin{document}')
+            ) {
+              original = context.currentFileContent || context.currentLineText || '';
+            } else {
+              original = context.currentLineText || context.currentFileContent || '';
+            }
+          }
+
           if (original.trim().length > 0 && finalOutput.trim().length > 0) {
             const diff = computeDiff(original, finalOutput, context.currentFileName || 'paper.tex');
             setDiffResult(diff);

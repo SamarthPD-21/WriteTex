@@ -12,6 +12,7 @@ export interface SnippetReplacementLocation {
     | 'section_match'
     | 'content_anchor'
     | 'preamble'
+    | 'full_document'
     | 'bullet_match';
   confidence: number;
 }
@@ -67,8 +68,19 @@ export function locateWrongSnippetInDoc(
 
   const cleanRep = replacement.trim();
 
-  // 3. Preamble Replacement (Replacement starts with \documentclass or includes \begin{document})
+  // 3. Full Document or Preamble Replacement
   if (cleanRep.startsWith('\\documentclass') || cleanRep.includes('\\begin{document}')) {
+    // If the replacement contains \end{document}, it is a complete document replacement
+    if (cleanRep.includes('\\end{document}')) {
+      return {
+        from: 0,
+        to: doc.length,
+        matchedText: doc,
+        reason: 'full_document',
+        confidence: 0.98,
+      };
+    }
+
     const beginDocIdx = doc.indexOf('\\begin{document}');
     if (beginDocIdx !== -1) {
       const endOfBeginDoc = beginDocIdx + '\\begin{document}'.length;

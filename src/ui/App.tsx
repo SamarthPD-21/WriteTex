@@ -23,6 +23,7 @@ import {
   AVAILABLE_MODELS,
   DocumentMode,
 } from '../messaging/types';
+import { OverleafLogEntry } from '../adapters/overleaf/error-scraper';
 import { GitHubAnalysisResult } from '../integrations/github/types';
 import { RefreshCw } from 'lucide-react';
 
@@ -290,6 +291,8 @@ export const App: React.FC = () => {
       targetRole?: string;
       jobDescription?: string;
       githubAnalysis?: GitHubAnalysisResult;
+      overleafErrors?: OverleafLogEntry[];
+      hasNoPdf?: boolean;
     }
   ) => {
     setLastPrompt(prompt);
@@ -338,6 +341,8 @@ export const App: React.FC = () => {
         targetRole: meta?.targetRole,
         jobDescription: meta?.jobDescription,
         githubAnalysis: meta?.githubAnalysis,
+        overleafErrors: meta?.overleafErrors,
+        hasNoPdf: meta?.hasNoPdf,
       },
       presetKey
     );
@@ -411,6 +416,8 @@ export const App: React.FC = () => {
                 ? 'Replaced matching code block'
                 : loc.reason === 'preamble'
                 ? 'Restored complete preamble'
+                : loc.reason === 'full_document'
+                ? 'Repaired full document'
                 : loc.reason === 'bullet_match'
                 ? 'Replaced matching bullets'
                 : 'Replaced selected snippet';

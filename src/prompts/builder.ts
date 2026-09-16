@@ -126,6 +126,33 @@ export function buildPrompt(
     githubSection += '\n';
   }
 
+  const isErrorFixing =
+    presetKey === 'fix_errors' ||
+    Boolean(context.hasNoPdf) ||
+    Boolean(context.overleafErrors && context.overleafErrors.length > 0) ||
+    /^(fix|repair|debug|solve|compile|no pdf)\b/i.test(userQuery.trim()) ||
+    /error|emergency stop|undefined control sequence|runaway argument|no legal \\end/i.test(userQuery);
+
+  let errorSection = '';
+  if (context.hasNoPdf || (context.overleafErrors && context.overleafErrors.length > 0)) {
+    errorSection += `[OVERLEAF COMPILER ERRORS & BUILD LOG]\n`;
+    if (context.hasNoPdf) {
+      errorSection += `Status: "No PDF" produced by LaTeX compiler (fatal compilation failure)\n`;
+    }
+    if (context.overleafErrors && context.overleafErrors.length > 0) {
+      for (const err of context.overleafErrors.slice(0, 6)) {
+        errorSection += `- [${err.type.toUpperCase()}] ${err.title}\n`;
+        if (err.message && err.message !== err.title) {
+          errorSection += `  Details: ${err.message}\n`;
+        }
+        if (err.line) {
+          errorSection += `  Line: ${err.line}\n`;
+        }
+      }
+    }
+    errorSection += '\n';
+  }
+
   let codeHeader = '[SELECTED LATEX CODE]';
   if (effectiveDocMode === 'cover_letter' && context.selectedText) {
     codeHeader = '[CANDIDATE RESUME EXPERIENCE / BACKGROUND]';
@@ -134,7 +161,7 @@ export function buildPrompt(
   let fullUserPrompt = '';
 
   if (context.selectedText && context.selectedText.trim().length > 0) {
-    fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 
 ${codeHeader}
@@ -149,7 +176,7 @@ ${userQuery}
     const doc = context.currentFileContent.trim();
     const docSnippet = doc.length <= 10000 ? doc : doc.slice(0, 10000);
 
-    fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 ${context.currentLineNumber ? `Active line: ${context.currentLineNumber}` : ''}
 
@@ -161,7 +188,7 @@ ${userQuery}
 
 (Note: Return ONLY the targeted LaTeX snippet or section to replace. Do NOT reprint the full document if only fixing an error or updating a section. Be fast and concise.)`;
   } else if (context.currentLineText) {
-    fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 Current line (${context.currentLineNumber || 1}): ${context.currentLineText}
 
@@ -170,7 +197,7 @@ ${userQuery}
 
 (Note: Return ONLY the replacement LaTeX snippet. Be concise.)`;
   } else {
-    fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 
 [USER INSTRUCTION]
@@ -178,7 +205,7 @@ ${userQuery}`;
   }
 
   return {
-    systemPrompt: getSystemPrompt(effectiveDocMode),
+    systemPrompt: getSystemPrompt(effectiveDocMode, isErrorFixing),
     userPrompt: fullUserPrompt,
     isExplanationOnly,
     detectedDocMode: effectiveDocMode,

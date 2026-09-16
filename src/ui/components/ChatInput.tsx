@@ -25,6 +25,7 @@ import {
   Code2,
   GitFork,
   CheckCircle2,
+  AlertOctagon,
 } from 'lucide-react';
 import {
   BasePreset,
@@ -42,6 +43,8 @@ import { rankRepositoriesByRole } from '../../integrations/github/ranker';
 import { analyzeGitHubViaBackground } from '../../messaging/runtime';
 import { analyzeKeywordGap } from '../../analysis/keyword-gap';
 import { KeywordGapView } from './KeywordGapView';
+import { scrapeOverleafErrors, OverleafDiagnosticsResult, OverleafLogEntry } from '../../adapters/overleaf/error-scraper';
+import { autoRepairLatexDocument } from '../../latex/auto-repair';
 
 const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-3.5 h-3.5' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -85,6 +88,8 @@ interface ChatInputProps {
       targetRole?: string;
       jobDescription?: string;
       githubAnalysis?: GitHubAnalysisResult;
+      overleafErrors?: OverleafLogEntry[];
+      hasNoPdf?: boolean;
     }
   ) => void;
   isGenerating: boolean;
@@ -147,6 +152,70 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historyContainerRef = useRef<HTMLDivElement>(null);
+
+  // Overleaf compilation diagnostics state
+  const [diagnostics, setDiagnostics] = useState<OverleafDiagnosticsResult | null>(null);
+  const [isFetchingErrors, setIsFetchingErrors] = useState<boolean>(false);
+
+  // Auto-scan for Overleaf errors on mount and when fileName changes
+  useEffect(() => {
+    const diag = scrapeOverleafErrors();
+    if (diag.hasErrors || diag.hasNoPdf) {
+      setDiagnostics(diag);
+    }
+  }, [currentFileName]);
+
+  const handleFetchErrors = () => {
+    setIsFetchingErrors(true);
+    try {
+      const diag = scrapeOverleafErrors();
+      if (diag.hasErrors || diag.hasNoPdf) {
+        setDiagnostics(diag);
+      } else {
+        const repairCheck = autoRepairLatexDocument(currentFileContent || '');
+        if (repairCheck.wasRepaired) {
+          setDiagnostics({
+            hasErrors: true,
+            hasNoPdf: false,
+            entries: repairCheck.repairsMade.map((r) => ({
+              type: 'error',
+              title: r,
+              message: r,
+            })),
+            summary: 'Detected corrupted preamble / macros in document buffer.',
+          });
+        } else {
+          setDiagnostics({
+            hasErrors: false,
+            hasNoPdf: false,
+            entries: [],
+            summary: 'No compiler errors found in Overleaf log panel or document.',
+          });
+        }
+      }
+    } finally {
+      setIsFetchingErrors(false);
+    }
+  };
+
+  const handleFixErrorsWithAI = () => {
+    const errorTitles =
+      diagnostics && diagnostics.entries.length > 0
+        ? diagnostics.entries.map((e) => e.title).join(', ')
+        : 'Compiler halt (No PDF produced)';
+
+    const fixPrompt = `Resolve Overleaf LaTeX failure (${diagnostics?.hasNoPdf ? 'No PDF' : 'errors'}): ${errorTitles}. Repair truncated preamble macros and fix syntax.`;
+
+    onGenerate(fixPrompt, 'fix_errors', {
+      docMode,
+      targetCompany: targetCompany.trim() || undefined,
+      targetRole: targetRole.trim() || undefined,
+      jobDescription: jobDescription.trim() || undefined,
+      githubAnalysis: githubAnalysis || undefined,
+      overleafErrors: diagnostics?.entries,
+      hasNoPdf: diagnostics?.hasNoPdf ?? true,
+    });
+  };
 
   // Auto-detect document mode from filename
   useEffect(() => {
@@ -271,6 +340,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       targetRole: targetRole.trim() || undefined,
       jobDescription: jobDescription.trim() || undefined,
       githubAnalysis: githubAnalysis || undefined,
+      overleafErrors: diagnostics?.entries,
+      hasNoPdf: diagnostics?.hasNoPdf,
     });
 
     setPrompt('');
@@ -406,16 +477,29 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               </span>
             </div>
 
-            {selectedText && selectedText.trim().length > 0 ? (
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-[10.5px] shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>{selectedText.length} chars selected</span>
-              </div>
-            ) : (
-              <span className="text-[10.5px] text-zinc-400 italic">
-                {docMode === 'resume' ? 'Select bullets to tailor' : 'Select items to draft'}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Fetch Errors Button */}
+              <button
+                type="button"
+                onClick={handleFetchErrors}
+                title="Scan Overleaf compilation logs for errors and warnings"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10.5px] font-medium bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/25 transition-all active:scale-95 shrink-0"
+              >
+                <AlertOctagon className="w-3 h-3 text-rose-400" />
+                <span>{isFetchingErrors ? 'Checking...' : 'Fetch Errors'}</span>
+              </button>
+
+              {selectedText && selectedText.trim().length > 0 ? (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-[10.5px] shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>{selectedText.length} chars selected</span>
+                </div>
+              ) : (
+                <span className="text-[10.5px] text-zinc-400 italic">
+                  {docMode === 'resume' ? 'Select bullets to tailor' : 'Select items to draft'}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Target Position Row */}
@@ -730,6 +814,109 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             )}
           </div>
         </div>
+
+        {/* Overleaf Compilation Diagnostics / "No PDF" Alert Card */}
+        {diagnostics && (diagnostics.hasErrors || diagnostics.hasNoPdf) && (
+          <div className="flex flex-col gap-2 p-3 rounded-xl bg-gradient-to-br from-rose-950/40 to-red-900/20 border border-rose-500/30 text-xs shadow-md shrink-0 animate-in fade-in duration-200">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-lg bg-rose-500/20 text-rose-400 shrink-0">
+                  <AlertOctagon className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-semibold text-rose-200 text-[12px] flex items-center gap-1.5">
+                    <span>{diagnostics.hasNoPdf ? 'Overleaf "No PDF" Error' : 'LaTeX Compilation Halt'}</span>
+                    {diagnostics.hasNoPdf && (
+                      <span className="px-1.5 py-0.2 rounded text-[9.5px] font-mono bg-rose-500/30 text-rose-300 font-bold uppercase tracking-wider">
+                        No PDF
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10.5px] text-zinc-400 mt-0.5">
+                    {diagnostics.summary}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDiagnostics(null)}
+                className="p-1 text-zinc-400 hover:text-zinc-200 hover:bg-white/10 rounded-md transition-colors"
+                title="Dismiss alert"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Error Entries (show up to 3 key errors if any) */}
+            {diagnostics.entries.length > 0 && (
+              <div className="flex flex-col gap-1 my-0.5 max-h-24 overflow-y-auto bg-black/40 p-2 rounded-lg border border-rose-500/15 font-mono text-[10.5px] text-rose-300/90">
+                {diagnostics.entries.slice(0, 3).map((entry, idx) => (
+                  <div key={idx} className="flex items-start gap-1.5 leading-tight">
+                    <span className="text-rose-500 font-bold shrink-0">•</span>
+                    <span className="truncate">
+                      {entry.line ? `Line ${entry.line}: ` : ''}
+                      {entry.title}
+                    </span>
+                  </div>
+                ))}
+                {diagnostics.entries.length > 3 && (
+                  <div className="text-[9.5px] text-zinc-400 italic">
+                    +{diagnostics.entries.length - 3} more issue(s) in Overleaf log panel
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-1 border-t border-rose-500/20">
+              {onAutoRepair && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    onAutoRepair();
+                    setTimeout(() => {
+                      const updated = scrapeOverleafErrors();
+                      setDiagnostics(updated.hasErrors || updated.hasNoPdf ? updated : null);
+                    }, 500);
+                  }}
+                  className="flex-1 py-1.5 px-2.5 rounded-lg text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>1-Click Auto-Repair</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleFixErrorsWithAI}
+                disabled={isGenerating}
+                className="flex-1 py-1.5 px-2.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Fix with AI</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Clean status if user explicitly clicked "Fetch Errors" and no errors found */}
+        {diagnostics && !diagnostics.hasErrors && !diagnostics.hasNoPdf && (
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-200 shrink-0">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>✓ No Overleaf compilation errors found in logs or document buffer</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDiagnostics(null)}
+              className="p-1 text-emerald-400 hover:text-emerald-200 hover:bg-emerald-500/10 rounded-md transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
 
         {/* API Key Alert if missing */}
         {!hasApiKey && (

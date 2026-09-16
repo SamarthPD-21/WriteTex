@@ -92,7 +92,7 @@ export function autoRepairLatexDocument(doc: string): AutoRepairResult {
   const repairsMade: string[] = [];
 
   // 1. Repair broken or truncated macros
-  const macroReplacements: [RegExp, string, string][] = [
+  const macroReplacements: [RegExp, string | ((substring: string, ...args: any[]) => string), string][] = [
     [/^[ \t]*n\{/gm, '\\section{', 'Restored truncated \\section{'],
     [/^[ \t]*section\{/gm, '\\section{', 'Added missing backslash to \\section{'],
     [/(?<![\\a-zA-Z])(?:sumeSubheading|resumeSubheading)\b/g, '\\resumeSubheading', 'Repaired \\resumeSubheading'],
@@ -103,6 +103,15 @@ export function autoRepairLatexDocument(doc: string): AutoRepairResult {
     [/(?<![\\a-zA-Z])(?:SubHeadingListEnd|resumeSubHeadingListEnd)\b/g, '\\resumeSubHeadingListEnd', 'Repaired \\resumeSubHeadingListEnd'],
     [/(?<![\\a-zA-Z])(?:resumeProjectHeading)\b/g, '\\resumeProjectHeading', 'Repaired \\resumeProjectHeading'],
     [/(?<![\\a-zA-Z])(?:xtit|textit)\{/g, '\\textit{', 'Repaired \\textit{'],
+    // Truncated package and macro declarations from bad pastes/edits
+    [/^[ \t]*e\{([a-zA-Z0-9,-]+)\}/gm, '\\usepackage{$1}', 'Repaired truncated \\usepackage{$1}'],
+    [/^[ \t]*e\[([^\]]+)\]\{([a-zA-Z0-9,-]+)\}/gm, '\\usepackage[$1]{$2}', 'Repaired truncated \\usepackage[$1]{$2}'],
+    [/^[ \t]*package\{/gm, '\\usepackage{', 'Repaired \\usepackage{'],
+    [/^[ \t]*and\{(\\?[a-zA-Z]+)\}/gm, (_m, macro: string) => `\\renewcommand{\\${macro.replace(/^\\+/, '')}}`, 'Repaired truncated \\renewcommand{$1}'],
+    [/^[ \t]*th\{(\\?[a-zA-Z]+)\}/gm, (_m, macro: string) => `\\addtolength{\\${macro.replace(/^\\+/, '')}}`, 'Repaired truncated \\addtolength{$1}'],
+    [/^[ \t]*phtounicode\}/gm, '\\input{glyphtounicode}', 'Repaired \\input{glyphtounicode}'],
+    [/^[ \t]*\{fancy\}/gm, '\\pagestyle{fancy}', 'Repaired \\pagestyle{fancy}'],
+    [/^[ \t]*same\}/gm, '\\urlstyle{same}', 'Repaired \\urlstyle{same}'],
     // Bracket typos instead of braces: e.g. \underline[1696...}
     [/(?<![\\a-zA-Z])\\underline\[([^}\n]+)\}/g, '\\underline{$1}', 'Repaired \\underline[...} to \\underline{...}'],
     [/(?<![\\a-zA-Z])\\underline\[([^\]\n]+)\]/g, '\\underline{$1}', 'Repaired \\underline[...] to \\underline{...}'],
@@ -113,7 +122,7 @@ export function autoRepairLatexDocument(doc: string): AutoRepairResult {
 
   for (const [regex, replacement, label] of macroReplacements) {
     if (regex.test(text)) {
-      text = text.replace(regex, replacement);
+      text = text.replace(regex, replacement as any);
       repairsMade.push(label);
     }
   }
@@ -125,15 +134,24 @@ export function autoRepairLatexDocument(doc: string): AutoRepairResult {
     repairsMade.push('Inserted missing "}" for unclosed \\resumeItem');
   }
 
-  // 2. Check for missing preamble
-  if (!text.includes('\\documentclass')) {
-    if (text.includes('\\begin{document}')) {
-      const beginIdx = text.indexOf('\\begin{document}');
+  // 2. Check for missing or corrupted preamble (e.g. truncated macros causing No PDF error)
+  if (text.includes('\\begin{document}')) {
+    const beginIdx = text.indexOf('\\begin{document}');
+    const preamble = text.slice(0, beginIdx);
+
+    // If preamble has truncated macros, lacks \documentclass, or lacks \usepackage
+    const isCorruptedPreamble =
+      !preamble.includes('\\documentclass') ||
+      /^[ \t]*(?:e\{|e\[|and\{|th\{|phtounicode)/m.test(preamble) ||
+      (preamble.match(/\\usepackage/g) || []).length < 2;
+
+    if (isCorruptedPreamble) {
       text = JAKES_RESUME_PREAMBLE + text.slice(beginIdx + '\\begin{document}'.length);
-    } else {
-      text = JAKES_RESUME_PREAMBLE + '\n' + text.trimStart();
+      repairsMade.push("Restored complete Jake's Resume preamble & packages (fixed No PDF error)");
     }
-    repairsMade.push('Restored complete Jake\'s Resume preamble and macros');
+  } else if (!text.includes('\\documentclass')) {
+    text = JAKES_RESUME_PREAMBLE + '\n' + text.trimStart();
+    repairsMade.push("Restored complete Jake's Resume preamble and macros");
   }
 
   // 3. Ensure \\end{document} is present

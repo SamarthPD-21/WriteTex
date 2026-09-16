@@ -200,5 +200,44 @@ describe('Prompt Builder', () => {
     expect(githubSkillsPreset).toBeDefined();
     expect(githubSkillsPreset?.label).toBe('Sync GitHub Skills');
   });
+
+  it('activates ERROR_FIXING_SYSTEM_PROMPT and injects compiler logs when hasNoPdf or errors are present', () => {
+    const built = buildPrompt(
+      'fix the errors',
+      {
+        currentFileName: 'main.tex',
+        hasNoPdf: true,
+        overleafErrors: [
+          {
+            type: 'error',
+            title: 'Emergency stop. ./main.tex',
+            message: 'Emergency stop. ./main.tex, line 3',
+            line: 3,
+          },
+          {
+            type: 'error',
+            title: '*** (job aborted, no legal \\end found)',
+            message: '*** (job aborted, no legal \\end found)',
+          },
+        ],
+        currentFileContent: '\\documentclass[letterpaper,11pt]{article}\ne{latexsym}\n\\begin{document}\n\\end{document}',
+      },
+      'fix_errors'
+    );
+
+    // Enforces error fixing system prompt with zero-hallucination policy
+    expect(built.systemPrompt).toContain('WriteTex LaTeX Debugger & Compiler Diagnostics Specialist');
+    expect(built.systemPrompt).toContain('STRICT ZERO-HALLUCINATION POLICY');
+    expect(built.systemPrompt).toContain('NEVER invent fictional companies');
+    expect(built.systemPrompt).toContain('PREAMBLE & TRUNCATED MACRO REPAIR');
+    expect(built.systemPrompt).toContain('e{latexsym}');
+
+    // Injects compiler errors & No PDF status into the user prompt
+    expect(built.userPrompt).toContain('[OVERLEAF COMPILER ERRORS & BUILD LOG]');
+    expect(built.userPrompt).toContain('Status: "No PDF" produced by LaTeX compiler');
+    expect(built.userPrompt).toContain('Emergency stop. ./main.tex');
+    expect(built.userPrompt).toContain('Line: 3');
+    expect(built.userPrompt).toContain('job aborted, no legal \\end found');
+  });
 });
 

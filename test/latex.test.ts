@@ -121,4 +121,45 @@ describe('LaTeX Auto-Repair', () => {
     expect(result.repairedDoc).toContain('\\underline{1696 (3-Star)}');
     expect(result.repairedDoc).toContain('\\documentclass');
   });
+
+  it('restores Jake\'s Resume preamble when truncated preamble macros cause No PDF halts', async () => {
+    const { autoRepairLatexDocument } = await import('../src/latex/auto-repair');
+    // Truncated preamble snippet matching the user screenshot
+    const brokenPreambleDoc = `\\documentclass[letterpaper,11pt]{article}
+
+e{latexsym}
+e[empty]{fullpage}
+e{titlesec}
+e{marvosym}
+e[usenames,dvipsnames]{color}
+phtounicode}
+
+and{\\headrulewidth}{0pt}
+th{\\oddsidemargin}{-0.5in}
+same}
+
+\\begin{document}
+\\section{Experience}
+\\resumeSubheading{Google}{Mountain View, CA}{Software Engineer}{2022 -- Present}
+\\begin{itemize}
+\\item Built high-performance distributed systems.
+\\end{itemize}
+\\end{document}
+`;
+
+    const result = autoRepairLatexDocument(brokenPreambleDoc);
+    expect(result.wasRepaired).toBe(true);
+    // Should have restored complete preamble with valid \usepackage lines
+    expect(result.repairedDoc).toContain('\\usepackage{latexsym}');
+    expect(result.repairedDoc).toContain('\\usepackage[empty]{fullpage}');
+    expect(result.repairedDoc).toContain('\\usepackage{titlesec}');
+    expect(result.repairedDoc).toContain('\\input{glyphtounicode}');
+    expect(result.repairedDoc).toContain('\\renewcommand{\\headrulewidth}');
+    expect(result.repairedDoc).toContain('\\addtolength{\\oddsidemargin}');
+    expect(result.repairedDoc).toContain('\\urlstyle{same}');
+    // Should preserve user experience content verbatim
+    expect(result.repairedDoc).toContain('\\resumeSubheading{Google}{Mountain View, CA}{Software Engineer}{2022 -- Present}');
+    expect(result.repairedDoc).toContain('Built high-performance distributed systems.');
+    expect(result.repairedDoc).toContain('\\end{document}');
+  });
 });
