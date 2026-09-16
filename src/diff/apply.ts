@@ -108,14 +108,14 @@ export function findSnippetLocation(
   // 3. Localized search strictly around approximateIndex
   if (approximateIndex !== undefined && approximateIndex >= 0 && approximateIndex < doc.length) {
     const dmp = new DiffMatchPatch();
-    dmp.Match_Threshold = 0.4; // Strict threshold to prevent false matches
-    dmp.Match_Distance = 250;
+    dmp.Match_Threshold = 0.45;
+    dmp.Match_Distance = 1000;
 
-    const windowStart = Math.max(0, approximateIndex - 300);
-    const windowEnd = Math.min(doc.length, approximateIndex + trimmed.length + 300);
+    const windowStart = Math.max(0, approximateIndex - 800);
+    const windowEnd = Math.min(doc.length, approximateIndex + trimmed.length + 800);
     const localSlice = doc.slice(windowStart, windowEnd);
 
-    const relativeMatch = dmp.match_main(localSlice, trimmed, approximateIndex - windowStart);
+    const relativeMatch = dmp.match_main(localSlice, trimmed, Math.max(0, approximateIndex - windowStart));
     if (relativeMatch !== -1) {
       const matchIdx = windowStart + relativeMatch;
       return {
@@ -124,6 +124,45 @@ export function findSnippetLocation(
         matchedText: doc.slice(matchIdx, matchIdx + trimmed.length),
       };
     }
+  }
+
+  // 4. Whole-document fuzzy search as fallback
+  return findSnippetLocationFuzzy(doc, snippet, approximateIndex);
+}
+
+/**
+ * Performs full-document fuzzy search when exact or windowed matches fail.
+ */
+export function findSnippetLocationFuzzy(
+  doc: string,
+  snippet: string,
+  approximateIndex?: number
+): SnippetLocation | null {
+  if (!doc || !snippet) return null;
+  const trimmed = snippet.trim();
+  if (!trimmed) return null;
+
+  try {
+    const dmp = new DiffMatchPatch();
+    dmp.Match_Threshold = 0.5;
+    dmp.Match_Distance = Math.max(doc.length, 2000);
+
+    const approx = approximateIndex !== undefined && approximateIndex >= 0
+      ? Math.min(approximateIndex, doc.length - 1)
+      : Math.floor(doc.length / 2);
+
+    const matchIdx = dmp.match_main(doc, trimmed, approx);
+    if (matchIdx !== -1) {
+      // Find the end boundary based on trimmed length or matching newline/brace
+      const matchedSlice = doc.slice(matchIdx, matchIdx + trimmed.length);
+      return {
+        from: matchIdx,
+        to: matchIdx + trimmed.length,
+        matchedText: matchedSlice,
+      };
+    }
+  } catch {
+    // Fallthrough on any dmp failure
   }
 
   return null;

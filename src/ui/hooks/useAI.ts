@@ -71,7 +71,11 @@ export function useAI(settings: Settings) {
             } else {
               // Intelligently identify the exact target section or block in current document
               const doc = context.currentFileContent || '';
-              const loc = locateWrongSnippetInDoc(doc, finalOutput);
+              const loc = locateWrongSnippetInDoc(doc, finalOutput, {
+                originalDocSnapshot: doc,
+                originalSnippet: context.selectedText,
+                approximateIndex: context.currentLineNumber !== undefined ? undefined : 0,
+              });
               if (loc && loc.matchedText && loc.matchedText.trim().length > 0) {
                 original = loc.matchedText;
               } else {

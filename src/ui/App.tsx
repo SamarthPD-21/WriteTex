@@ -259,6 +259,7 @@ export const App: React.FC = () => {
     to: number;
     text: string;
     fileName: string;
+    docSnapshot?: string;
   } | null>(null);
 
   const pushUndo = (entry: UndoEntry) => {
@@ -307,13 +308,17 @@ export const App: React.FC = () => {
         : null
     );
 
-    // Snapshot the exact target selection at generation trigger time
+    const fullDoc = await getFullContent();
+    if (fullDoc) setFullDocContent(fullDoc);
+
+    // Snapshot the exact target selection and document buffer at generation trigger time
     if (selectionRange && !selectionRange.empty) {
       setPendingEdit({
         from: selectionRange.from,
         to: selectionRange.to,
         text: selectedText || selectionRange.text,
         fileName: currentFileName,
+        docSnapshot: fullDoc || undefined,
       });
     } else if (selectedText && selectedText.trim().length > 0) {
       setPendingEdit({
@@ -321,13 +326,11 @@ export const App: React.FC = () => {
         to: (currentLine?.from ?? 0) + selectedText.length,
         text: selectedText,
         fileName: currentFileName,
+        docSnapshot: fullDoc || undefined,
       });
     } else {
       setPendingEdit(null);
     }
-
-    const fullDoc = await getFullContent();
-    if (fullDoc) setFullDocContent(fullDoc);
 
     generate(
       prompt,
@@ -403,6 +406,7 @@ export const App: React.FC = () => {
           originalSnippet: targetOriginal || diffResult?.original || pendingEdit?.text || selectedText,
           approximateIndex: pendingEdit?.from ?? currentLine?.from,
           activeSelection: selectionRange && !selectionRange.empty ? selectionRange : undefined,
+          originalDocSnapshot: pendingEdit?.docSnapshot || fullDocContent || undefined,
         });
 
         if (loc) {
@@ -414,10 +418,14 @@ export const App: React.FC = () => {
             appliedActionDesc =
               loc.reason === 'section_match'
                 ? 'Replaced matching section'
+                : loc.reason === 'section_similarity_match'
+                ? 'Replaced matching section'
                 : loc.reason === 'section_body_match'
                 ? 'Replaced section projects'
                 : loc.reason === 'section_insert_slot'
                 ? 'Inserted section in standard order'
+                : loc.reason === 'stale_coords_recovered'
+                ? 'Replaced snippet (recovered position)'
                 : loc.reason === 'content_anchor'
                 ? 'Replaced matching code block'
                 : loc.reason === 'preamble'

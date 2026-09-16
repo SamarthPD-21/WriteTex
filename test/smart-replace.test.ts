@@ -200,6 +200,53 @@ elected Projects}
     expect(loc?.from).toBe(0);
     expect(sampleDoc.slice(loc!.from, loc!.to)).toBe('\\documentclass{article}\n\\begin{document}');
   });
+
+  it('recovers stale coordinates when document was edited above the target during generation', () => {
+    const originalDocSnapshot = sampleDoc;
+    const oldSnippet = '\\resumeItem{Designed high-throughput low-latency transaction processing APIs handling \\textbf{\\$50M+} daily transaction volume.}';
+    const oldFrom = originalDocSnapshot.indexOf(oldSnippet);
+
+    // Simulate user typing a new line at the top of the document during streaming
+    const editedDoc = '% Added comment at top\n% Another line\n' + sampleDoc;
+
+    const loc = locateWrongSnippetInDoc(editedDoc, '\\resumeItem{Designed low-latency financial transaction processing APIs.}', {
+      originalSnippet: oldSnippet,
+      approximateIndex: oldFrom,
+      originalDocSnapshot,
+    });
+
+    expect(loc).toBeDefined();
+    expect(loc?.matchedText).toBe(oldSnippet);
+    // The recovered offset should be shifted by the length of the prepended text
+    expect(loc?.from).toBe(oldFrom + '% Added comment at top\n% Another line\n'.length);
+  });
+
+  it('matches section via content similarity when section title differs substantially', () => {
+    const docWithCustomTitle = `\\documentclass{article}
+\\begin{document}
+\\section{Core Engineering Endeavors}
+\\resumeSubHeadingListStart
+  \\resumeProjectHeading{\\textbf{Distributed Consensus Engine}}{github.com/engine}
+  \\resumeItemListStart
+    \\resumeItem{Engineered distributed consensus protocol using Raft.}
+  \\resumeItemListEnd
+\\resumeSubHeadingListEnd
+\\end{document}`;
+
+    const newProject = `\\section{Projects}
+\\resumeSubHeadingListStart
+  \\resumeProjectHeading{\\textbf{Distributed Consensus Engine}}{github.com/engine}
+  \\resumeItemListStart
+    \\resumeItem{Optimized distributed consensus protocol for sub-millisecond commit latency.}
+  \\resumeItemListEnd
+\\resumeSubHeadingListEnd`;
+
+    const loc = locateWrongSnippetInDoc(docWithCustomTitle, newProject);
+    expect(loc).toBeDefined();
+    expect(['section_match', 'section_similarity_match']).toContain(loc?.reason);
+    expect(loc?.matchedText).toContain('Core Engineering Endeavors');
+    expect(loc?.matchedText).toContain('Distributed Consensus Engine');
+  });
 });
 
 describe('LaTeX Auto-Repair Engine', () => {
