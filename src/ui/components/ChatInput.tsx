@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   AlertOctagon,
   ArrowRight,
+  Paperclip,
 } from 'lucide-react';
 import {
   BasePreset,
@@ -51,6 +52,9 @@ import {
   formatAllProjectsToLatex,
   formatGitHubSkillsToLatex,
 } from '../../integrations/github/formatter';
+import { FileAttachment } from '../../integrations/files/types';
+import { extractTextFromFile } from '../../integrations/files/extractor';
+import { FileAttachmentList } from './FileAttachmentList';
 
 const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-3.5 h-3.5' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -96,6 +100,7 @@ interface ChatInputProps {
       githubAnalysis?: GitHubAnalysisResult;
       overleafErrors?: OverleafLogEntry[];
       hasNoPdf?: boolean;
+      attachedFiles?: FileAttachment[];
     }
   ) => void;
   isGenerating: boolean;
@@ -159,10 +164,86 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historyContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Attached files state (.txt, .pdf, .md, .tex)
+  const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);
+  const [isExtractingFile, setIsExtractingFile] = useState<boolean>(false);
+  const [extractingFileName, setExtractingFileName] = useState<string>('');
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
 
   // Overleaf compilation diagnostics state
   const [diagnostics, setDiagnostics] = useState<OverleafDiagnosticsResult | null>(null);
   const [isFetchingErrors, setIsFetchingErrors] = useState<boolean>(false);
+
+  const processFiles = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    setIsExtractingFile(true);
+    setFileError(null);
+
+    const newAttachments: FileAttachment[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setExtractingFileName(file.name);
+      try {
+        const res = await extractTextFromFile(file);
+        if (res.success && res.attachment) {
+          newAttachments.push(res.attachment);
+        } else if (res.error) {
+          setFileError(res.error);
+        }
+      } catch (err: any) {
+        setFileError(err?.message || `Failed to process ${file.name}`);
+      }
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachedFiles((prev) => [...prev, ...newAttachments]);
+    }
+    setIsExtractingFile(false);
+    setExtractingFileName('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      processFiles(e.target.files);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+    }
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachedFiles((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const handleUseAsJobDescription = (text: string, _fileName: string) => {
+    setJobDescription(text);
+    setIsTargetExpanded(true);
+    setShowJdInput(true);
+  };
 
   // Auto-scan for Overleaf errors on mount and when fileName changes
   useEffect(() => {
@@ -331,6 +412,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         githubAnalysis: githubAnalysis || undefined,
         overleafErrors: diagnostics?.entries,
         hasNoPdf: diagnostics?.hasNoPdf,
+        attachedFiles: attachedFiles.length > 0 ? attachedFiles : undefined,
       });
       setPrompt('');
       setActivePresetId(null);
@@ -372,6 +454,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       githubAnalysis: githubAnalysis || undefined,
       overleafErrors: diagnostics?.entries,
       hasNoPdf: diagnostics?.hasNoPdf,
+      attachedFiles: attachedFiles.length > 0 ? attachedFiles : undefined,
     });
 
     setPrompt('');
@@ -1250,8 +1333,62 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         )}
 
-        {/* 4. Text Input Box with Live Token & Char Counter */}
-        <div className="relative flex flex-col rounded-xl bg-[#11111b] border border-white/[0.08] focus-within:border-indigo-500/70 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all duration-150 shadow-inner shrink-0">
+        {/* Hidden native file input for TXT & PDF */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".txt,.pdf,.md,.tex,text/plain,application/pdf"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
+        {/* 4. Text Input Box with Live Token & Char Counter & Attachments */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`relative flex flex-col rounded-xl bg-[#11111b] border transition-all duration-150 shadow-inner shrink-0 ${
+            isDraggingOver
+              ? 'border-indigo-400 ring-2 ring-indigo-500/40 bg-indigo-950/20'
+              : 'border-white/[0.08] focus-within:border-indigo-500/70 focus-within:ring-2 focus-within:ring-indigo-500/20'
+          }`}
+        >
+          {/* Drag & drop overlay */}
+          {isDraggingOver && (
+            <div className="absolute inset-0 z-30 rounded-xl bg-[#121226]/90 border-2 border-dashed border-indigo-400 flex items-center justify-center gap-2 text-indigo-200 text-xs font-semibold backdrop-blur-xs pointer-events-none">
+              <Paperclip className="w-4 h-4 animate-bounce text-indigo-300" />
+              <span>Drop .txt or .pdf files to attach to query</span>
+            </div>
+          )}
+
+          {/* Attached Files List & Loading State */}
+          {(attachedFiles.length > 0 || isExtractingFile) && (
+            <div className="px-3 pt-2.5 pb-1 border-b border-white/[0.05] bg-[#0d0d16]/70 rounded-t-xl">
+              <FileAttachmentList
+                attachments={attachedFiles}
+                onRemoveAttachment={handleRemoveAttachment}
+                onUseAsJobDescription={handleUseAsJobDescription}
+                isExtracting={isExtractingFile}
+                extractingFileName={extractingFileName}
+              />
+            </div>
+          )}
+
+          {/* File error notice if any */}
+          {fileError && (
+            <div className="mx-3 mt-2 px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10.5px] flex items-center justify-between">
+              <span>⚠️ {fileError}</span>
+              <button
+                type="button"
+                onClick={() => setFileError(null)}
+                className="p-0.5 hover:text-white"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
           <div className="relative flex-1">
             <textarea
               ref={textareaRef}
@@ -1282,11 +1419,24 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             )}
           </div>
 
-          {/* Sub-bar inside textarea for live counters */}
+          {/* Sub-bar inside textarea for live counters & Attach button */}
           <div className="flex items-center justify-between px-3 pb-2 text-[10px] font-mono text-zinc-400 border-t border-white/[0.03]">
-            <span>
-              {promptChars > 0 ? `${promptChars} chars · ~${promptTokens} tokens` : 'Ready to tailor'}
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                title="Attach .txt or .pdf files to query (or drag & drop)"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-indigo-300 border border-white/[0.06] transition-colors active:scale-95"
+              >
+                <Paperclip className="w-3 h-3 text-indigo-400" />
+                <span>Attach TXT / PDF</span>
+              </button>
+
+              <span>
+                {promptChars > 0 ? `${promptChars} chars · ~${promptTokens} tokens` : 'Ready to tailor'}
+              </span>
+            </div>
+
             <span className="hidden sm:inline">Press Ctrl+Enter to generate</span>
           </div>
         </div>

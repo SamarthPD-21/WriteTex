@@ -153,6 +153,23 @@ export function buildPrompt(
     errorSection += '\n';
   }
 
+  // Attached files (PDF, TXT, MD, TEX) context
+  let attachmentsSection = '';
+  if (context.attachedFiles && context.attachedFiles.length > 0) {
+    attachmentsSection += `[ATTACHED REFERENCE DOCUMENTS]\n`;
+    attachmentsSection += `The user has attached ${context.attachedFiles.length} document(s) for reference:\n\n`;
+    for (const file of context.attachedFiles) {
+      const pageInfo = file.pageCount ? ` (${file.pageCount} pages, ${file.formattedSize})` : ` (${file.formattedSize})`;
+      attachmentsSection += `--- BEGIN ATTACHED FILE: ${file.name}${pageInfo} ---\n`;
+      const fileText =
+        file.text.length > 30000
+          ? `${file.text.slice(0, 30000)}\n[...truncated due to length...]`
+          : file.text;
+      attachmentsSection += `${fileText}\n`;
+      attachmentsSection += `--- END ATTACHED FILE: ${file.name} ---\n\n`;
+    }
+  }
+
   let codeHeader = '[SELECTED LATEX CODE]';
   if (effectiveDocMode === 'cover_letter' && context.selectedText) {
     codeHeader = '[CANDIDATE RESUME EXPERIENCE / BACKGROUND]';
@@ -161,7 +178,7 @@ export function buildPrompt(
   let fullUserPrompt = '';
 
   if (context.selectedText && context.selectedText.trim().length > 0) {
-    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 
 ${codeHeader}
@@ -176,7 +193,7 @@ ${userQuery}
     const doc = context.currentFileContent.trim();
     const docSnippet = doc.length <= 10000 ? doc : doc.slice(0, 10000);
 
-    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 ${context.currentLineNumber ? `Active line: ${context.currentLineNumber}` : ''}
 
@@ -188,7 +205,7 @@ ${userQuery}
 
 (Note: Return ONLY the targeted LaTeX snippet or section to replace. Do NOT reprint the full document if only fixing an error or updating a section. Be fast and concise.)`;
   } else if (context.currentLineText) {
-    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 Current line (${context.currentLineNumber || 1}): ${context.currentLineText}
 
@@ -197,7 +214,7 @@ ${userQuery}
 
 (Note: Return ONLY the replacement LaTeX snippet. Be concise.)`;
   } else {
-    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 
 [USER INSTRUCTION]

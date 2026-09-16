@@ -184,6 +184,7 @@ export const AVAILABLE_MODELS: Record<AIProviderId, ModelInfo[]> = {
 
 import { GitHubAnalysisResult } from '../integrations/github/types';
 import { OverleafLogEntry } from '../adapters/overleaf/error-scraper';
+import { FileAttachment } from '../integrations/files/types';
 
 export type DocumentMode = 'resume' | 'cover_letter';
 
@@ -203,6 +204,7 @@ export interface EditorContext {
   githubAnalysis?: GitHubAnalysisResult;
   overleafErrors?: OverleafLogEntry[];
   hasNoPdf?: boolean;
+  attachedFiles?: FileAttachment[];
 }
 
 export interface GenerateRequest {

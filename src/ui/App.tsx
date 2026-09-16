@@ -293,6 +293,7 @@ export const App: React.FC = () => {
       githubAnalysis?: GitHubAnalysisResult;
       overleafErrors?: OverleafLogEntry[];
       hasNoPdf?: boolean;
+      attachedFiles?: import('../integrations/files/types').FileAttachment[];
     }
   ) => {
     setLastPrompt(prompt);
@@ -343,6 +344,7 @@ export const App: React.FC = () => {
         githubAnalysis: meta?.githubAnalysis,
         overleafErrors: meta?.overleafErrors,
         hasNoPdf: meta?.hasNoPdf,
+        attachedFiles: meta?.attachedFiles,
       },
       presetKey
     );
