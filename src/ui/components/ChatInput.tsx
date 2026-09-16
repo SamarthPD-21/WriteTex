@@ -24,7 +24,7 @@ import {
   Loader2,
   Code2,
   GitFork,
-  BookOpen,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   BasePreset,
@@ -113,7 +113,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onApplyDirect,
   onAutoRepair,
   onClearHistory,
-  onOpenTemplates,
 }) => {
   // Document mode: 'resume' vs 'cover_letter'
   const [docMode, setDocMode] = useState<DocumentMode>('resume');
@@ -137,7 +136,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
   const [isPresetsExpanded, setIsPresetsExpanded] = useState<boolean>(false);
 
-  // History expansion state: which history items have their full response expanded
+  // History expansion state
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
 
   // Sub-tabs:
@@ -149,7 +148,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historyContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-detect document mode from filename if set
+  // Auto-detect document mode from filename
   useEffect(() => {
     const lower = (currentFileName || '').toLowerCase();
     if (lower.includes('cover') || lower.includes('letter')) {
@@ -190,13 +189,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [prompt]);
-
-  // Scroll to bottom of history on new message
-  useEffect(() => {
-    if (historyContainerRef.current) {
-      historyContainerRef.current.scrollTop = historyContainerRef.current.scrollHeight;
-    }
-  }, [history.length]);
 
   const handleAnalyzeGithub = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -266,7 +258,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
     let finalPrompt = query || (activePreset?.userPrompt ?? '');
 
-    // In cover letter mode, if target company/role is given but not already in prompt, augment smoothly
     if (targetCompany && !finalPrompt.includes(targetCompany)) {
       finalPrompt = `[Target Company: ${targetCompany}] ${finalPrompt}`;
     }
@@ -356,7 +347,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       }
       return 'Select LaTeX resume bullet points, or pick a target role below...';
     }
-    // Cover letter mode
     if (selectedText && selectedText.trim().length > 0) {
       return 'Draft or synthesize selected resume experience into a cover letter...';
     }
@@ -369,23 +359,23 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   return (
     <div className="flex flex-col h-full max-h-[620px] select-none">
       {/* Scrollable Content Container */}
-      <div className="flex-1 overflow-y-auto px-3.5 py-3 flex flex-col gap-2.5 no-scrollbar">
-        {/* 1. Document Mode Switcher + Template Library Quick Button */}
-        <div className="flex items-center gap-1.5 p-1 bg-[#13131e] rounded-xl border border-border/70 shrink-0">
+      <div className="flex-1 overflow-y-auto px-3.5 py-3 flex flex-col gap-3 no-scrollbar">
+        {/* 1. Document Mode Switcher (Clean 2-tab segmented control, NO duplicate emoji) */}
+        <div className="flex items-center p-1 bg-[#0e0e18] rounded-xl border border-white/[0.08] shrink-0 shadow-inner">
           <button
             type="button"
             onClick={() => {
               setDocMode('resume');
               setActivePresetId(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+            className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
               docMode === 'resume'
-                ? 'bg-accent text-white shadow-sm scale-[1.01]'
-                : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm font-semibold'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>📄 Resume / CV</span>
+            <span>Resume / CV</span>
           </button>
 
           <button
@@ -394,59 +384,46 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               setDocMode('cover_letter');
               setActivePresetId(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+            className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
               docMode === 'cover_letter'
-                ? 'bg-accent text-white shadow-sm scale-[1.01]'
-                : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm font-semibold'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
             }`}
           >
             <Mail className="w-3.5 h-3.5" />
-            <span>✉️ Cover Letter</span>
+            <span>Cover Letter</span>
           </button>
-
-          {onOpenTemplates && (
-            <button
-              type="button"
-              onClick={onOpenTemplates}
-              title="Browse standard LaTeX templates"
-              className="px-2 py-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-white/5 text-[11px] font-medium flex items-center gap-1 transition-colors shrink-0"
-            >
-              <BookOpen className="w-3 h-3 text-accent" />
-              <span className="hidden sm:inline">Templates</span>
-            </button>
-          )}
         </div>
 
-        {/* 2. Context Badge & Target Position Bar */}
-        <div className="flex flex-col gap-1.5 bg-[#151522] border border-border/70 p-2.5 rounded-xl shadow-inner shrink-0">
+        {/* 2. Context Badge & Target Position Card */}
+        <div className="flex flex-col gap-2 bg-[#141422] border border-white/[0.08] p-3 rounded-xl shadow-sm shrink-0">
+          {/* Top row: Current file and selection status */}
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 truncate">
-              <Building2 className="w-3.5 h-3.5 text-accent shrink-0" />
-              <span className="font-mono text-text-primary text-[11px] truncate font-medium">
+              <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span className="font-mono text-zinc-200 text-[11.5px] truncate font-medium">
                 {currentFileName}
               </span>
             </div>
 
             {selectedText && selectedText.trim().length > 0 ? (
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="text-[11px] text-text-secondary">
-                  Selected: <span className="font-mono font-semibold text-emerald-300">{selectedText.length}</span> chars
-                </span>
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-[10.5px] shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{selectedText.length} chars selected</span>
               </div>
             ) : (
-              <span className="text-[10.5px] text-text-muted italic">
-                {docMode === 'resume' ? 'Select bullets to tailor' : 'Select resume items to draft'}
+              <span className="text-[10.5px] text-zinc-400 italic">
+                {docMode === 'resume' ? 'Select bullets to tailor' : 'Select items to draft'}
               </span>
             )}
           </div>
 
-          {/* Target Position Pill / Expand Button */}
-          <div className="flex items-center justify-between pt-1 border-t border-border-subtle/50 text-xs">
+          {/* Target Position Row */}
+          <div className="flex items-center justify-between pt-1.5 border-t border-white/[0.06] text-xs">
             {hasTarget ? (
               <div className="flex items-center gap-1.5 overflow-hidden">
                 <span className="text-amber-400 text-[11px] shrink-0 font-medium">🎯 Target:</span>
-                <span className="text-text-primary font-semibold text-[11px] truncate">
+                <span className="text-zinc-100 font-medium text-[11px] truncate">
                   {targetCompany && `${targetCompany}`}
                   {targetCompany && targetRole && ' · '}
                   {targetRole && `${targetRole}`}
@@ -458,7 +435,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     setTargetRole('');
                     setJobDescription('');
                   }}
-                  className="p-0.5 rounded hover:bg-white/10 text-text-muted hover:text-text-primary shrink-0"
+                  className="p-0.5 rounded hover:bg-white/10 text-zinc-400 hover:text-white shrink-0 transition-colors"
                   title="Clear target"
                 >
                   <X className="w-2.5 h-2.5" />
@@ -468,9 +445,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               <button
                 type="button"
                 onClick={() => setIsTargetExpanded(!isTargetExpanded)}
-                className="flex items-center gap-1 text-[11px] text-text-secondary hover:text-accent font-medium transition-colors"
+                className="flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-indigo-400 font-medium transition-colors"
               >
-                <Target className="w-3 h-3 text-accent shrink-0" />
+                <Target className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                 <span>Target Company & Role (e.g. Stripe · Senior SWE)</span>
               </button>
             )}
@@ -478,7 +455,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <button
               type="button"
               onClick={() => setIsTargetExpanded(!isTargetExpanded)}
-              className="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-secondary transition-colors shrink-0 ml-1"
+              className="flex items-center gap-0.5 text-[10.5px] text-zinc-400 hover:text-zinc-200 transition-colors shrink-0 ml-1 font-medium"
             >
               <span>{isTargetExpanded ? 'Hide' : 'Edit'}</span>
               {isTargetExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -487,21 +464,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
           {/* Expandable Target Details Drawer */}
           {isTargetExpanded && (
-            <div className="flex flex-col gap-2 pt-2 border-t border-border-subtle/60 text-xs animate-in fade-in duration-150">
+            <div className="flex flex-col gap-2 pt-2 border-t border-white/[0.06] text-xs animate-in fade-in duration-150">
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
                   value={targetCompany}
                   onChange={(e) => setTargetCompany(e.target.value)}
                   placeholder="Company (e.g. Stripe, Google)"
-                  className="px-2.5 py-1.5 bg-[#0f0f18] border border-border/70 rounded-lg text-[11px] text-text-primary placeholder:text-text-muted outline-none focus:border-accent"
+                  className="px-2.5 py-1.5 bg-[#0d0d16] border border-white/[0.08] rounded-lg text-[11px] text-zinc-200 placeholder:text-zinc-400 outline-none focus:border-indigo-500 transition-colors"
                 />
                 <input
                   type="text"
                   value={targetRole}
                   onChange={(e) => setTargetRole(e.target.value)}
-                  placeholder="Role (e.g. Senior Software Eng)"
-                  className="px-2.5 py-1.5 bg-[#0f0f18] border border-border/70 rounded-lg text-[11px] text-text-primary placeholder:text-text-muted outline-none focus:border-accent"
+                  placeholder="Role (e.g. Senior SWE)"
+                  className="px-2.5 py-1.5 bg-[#0d0d16] border border-white/[0.08] rounded-lg text-[11px] text-zinc-200 placeholder:text-zinc-400 outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 
@@ -509,7 +486,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowJdInput(!showJdInput)}
-                  className="text-[10.5px] text-accent hover:underline flex items-center gap-1"
+                  className="text-[10.5px] text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-medium transition-colors"
                 >
                   <span>{showJdInput ? '− Hide Job Description' : '+ Add Job Description / Requirements'}</span>
                 </button>
@@ -517,7 +494,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsTargetExpanded(false)}
-                  className="px-2 py-0.5 rounded text-[10.5px] bg-accent/20 hover:bg-accent/30 text-accent font-medium"
+                  className="px-2.5 py-0.5 rounded-md text-[10.5px] bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 font-medium transition-colors"
                 >
                   Done
                 </button>
@@ -527,9 +504,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <textarea
                   value={jobDescription}
                   onChange={(e) => setJobDescription(e.target.value)}
-                  placeholder="Paste key requirements or job description snippet here..."
+                  placeholder="Paste job description or requirements here to enable live keyword matching..."
                   rows={2}
-                  className="w-full px-2.5 py-1.5 bg-[#0f0f18] border border-border/70 rounded-lg text-[11px] text-text-primary placeholder:text-text-muted outline-none focus:border-accent resize-none leading-relaxed"
+                  className="w-full px-2.5 py-1.5 bg-[#0d0d16] border border-white/[0.08] rounded-lg text-[11px] text-zinc-200 placeholder:text-zinc-400 outline-none focus:border-indigo-500 resize-none leading-relaxed transition-colors"
                 />
               )}
             </div>
@@ -547,11 +524,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           )}
 
           {/* GitHub Integration Section */}
-          <div className="flex flex-col gap-1.5 pt-1.5 border-t border-border-subtle/50 text-xs">
+          <div className="flex flex-col gap-1.5 pt-1.5 border-t border-white/[0.06] text-xs">
             {!githubAnalysis ? (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-1.5">
-                  <GithubIcon className="w-3.5 h-3.5 text-text-secondary shrink-0" />
+                  <GithubIcon className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                   <input
                     type="text"
                     value={githubUrl}
@@ -562,18 +539,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                         handleAnalyzeGithub();
                       }
                     }}
-                    placeholder="GitHub profile or repo link (e.g. github.com/username)..."
-                    className="flex-1 px-2.5 py-1 bg-[#0f0f18] border border-border/70 rounded-lg text-[11px] text-text-primary placeholder:text-text-muted outline-none focus:border-accent"
+                    placeholder="GitHub profile or repo (e.g. github.com/username)..."
+                    className="flex-1 px-2.5 py-1 bg-[#0d0d16] border border-white/[0.08] rounded-lg text-[11px] text-zinc-200 placeholder:text-zinc-400 outline-none focus:border-indigo-500 transition-colors"
                   />
                   <button
                     type="button"
                     onClick={() => handleAnalyzeGithub()}
                     disabled={!githubUrl.trim() || isAnalyzingGithub}
-                    className="px-2.5 py-1 bg-white/10 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed text-text-primary rounded-lg text-[11px] font-medium transition-colors shrink-0 flex items-center gap-1"
+                    className="px-2.5 py-1 bg-white/[0.08] hover:bg-white/[0.12] disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 rounded-lg text-[11px] font-medium transition-colors shrink-0 flex items-center gap-1"
                   >
                     {isAnalyzingGithub ? (
                       <>
-                        <Loader2 className="w-3 h-3 animate-spin text-accent" />
+                        <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
                         <span>Analyzing...</span>
                       </>
                     ) : (
@@ -582,24 +559,24 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   </button>
                 </div>
                 {githubError && (
-                  <div className="text-[10px] text-red-400 px-1 font-medium">{githubError}</div>
+                  <div className="text-[10px] text-rose-400 px-1 font-medium">{githubError}</div>
                 )}
               </div>
             ) : (
-              <div className="flex flex-col gap-2 bg-[#12121c] border border-border/60 p-2 rounded-lg">
+              <div className="flex flex-col gap-2 bg-[#0d0d16] border border-white/[0.06] p-2.5 rounded-lg">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 overflow-hidden">
+                  <div className="flex items-center gap-2 overflow-hidden">
                     <GithubIcon className="w-3.5 h-3.5 text-white shrink-0" />
                     <a
                       href={githubAnalysis.profileUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-text-primary font-semibold text-[11px] hover:underline flex items-center gap-0.5 truncate"
+                      className="text-zinc-100 font-semibold text-[11.5px] hover:underline flex items-center gap-1 truncate"
                     >
                       <span>@{githubAnalysis.username}</span>
                       <ExternalLink className="w-2.5 h-2.5 opacity-70" />
                     </a>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium shrink-0">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-medium shrink-0">
                       {githubAnalysis.topProjects.filter((p) => p.selected !== false).length} / {githubAnalysis.topProjects.length} selected
                     </span>
                   </div>
@@ -608,7 +585,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsGithubExpanded(!isGithubExpanded)}
-                      className="flex items-center gap-0.5 text-[10px] text-text-muted hover:text-text-primary transition-colors"
+                      className="flex items-center gap-0.5 text-[10.5px] text-zinc-400 hover:text-white transition-colors"
                     >
                       <span>{isGithubExpanded ? 'Hide' : 'Projects'}</span>
                       {isGithubExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -621,7 +598,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                         setGithubUrl('');
                         setIsGithubExpanded(false);
                       }}
-                      className="p-0.5 rounded hover:bg-white/10 text-text-muted hover:text-text-primary"
+                      className="p-0.5 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
                       title="Remove GitHub profile"
                     >
                       <X className="w-3 h-3" />
@@ -631,21 +608,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
                 {/* Top Languages badges */}
                 {githubAnalysis.topLanguages && githubAnalysis.topLanguages.length > 0 && (
-                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar text-[9.5px] text-text-muted">
-                    <Code2 className="w-3 h-3 shrink-0 text-text-secondary" />
+                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar text-[9.5px] text-zinc-400">
+                    <Code2 className="w-3 h-3 shrink-0 text-zinc-400" />
                     {githubAnalysis.topLanguages.slice(0, 4).map((l) => (
-                      <span key={l.language} className="px-1.5 py-0.5 rounded bg-white/5 font-mono text-text-secondary">
+                      <span key={l.language} className="px-1.5 py-0.5 rounded bg-white/[0.04] font-mono text-zinc-300">
                         {l.language}
                       </span>
                     ))}
                   </div>
                 )}
 
-                {/* Expandable Project List with Checkboxes & Role Alignment */}
+                {/* Expandable Project List */}
                 {isGithubExpanded && (
-                  <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle/50 animate-in fade-in duration-150">
-                    <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
-                      Role-Ranked Top Projects ({targetRole || 'General'}):
+                  <div className="flex flex-col gap-1.5 pt-1.5 border-t border-white/[0.06] animate-in fade-in duration-150">
+                    <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                      Role-Ranked Projects ({targetRole || 'General'}):
                     </div>
 
                     {githubAnalysis.topProjects.map((project) => {
@@ -656,8 +633,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                           onClick={() => handleToggleProject(project.name)}
                           className={`flex flex-col gap-0.5 p-2 rounded-lg cursor-pointer border transition-all ${
                             isSelected
-                              ? 'bg-[#181828] border-accent/40 shadow-sm'
-                              : 'bg-[#0f0f18] border-border/40 opacity-60'
+                              ? 'bg-[#18182a] border-indigo-500/40 shadow-xs'
+                              : 'bg-[#0a0a12] border-white/[0.04] opacity-60'
                           }`}
                         >
                           <div className="flex items-center justify-between">
@@ -666,17 +643,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => {}}
-                                className="rounded border-border accent-accent w-3 h-3 cursor-pointer"
+                                className="rounded border-white/20 accent-indigo-600 w-3 h-3 cursor-pointer"
                               />
-                              <span className="font-semibold text-text-primary text-[11px] truncate">
+                              <span className="font-semibold text-zinc-200 text-[11px] truncate">
                                 {project.name}
                               </span>
-                              <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-white/10 text-text-secondary">
+                              <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-white/[0.08] text-zinc-300">
                                 {project.language}
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0 text-[10px] text-text-muted">
+                            <div className="flex items-center gap-2 shrink-0 text-[10px] text-zinc-400">
                               {project.stars > 0 && (
                                 <span className="flex items-center gap-0.5 text-amber-300">
                                   <Star className="w-2.5 h-2.5 fill-current" />
@@ -693,13 +670,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                           </div>
 
                           {project.description && (
-                            <div className="text-[10px] text-text-secondary line-clamp-1 pl-4.5">
+                            <div className="text-[10px] text-zinc-400 line-clamp-1 pl-4.5">
                               {project.description}
                             </div>
                           )}
 
                           {project.roleMatchReason && (
-                            <div className="text-[9.5px] text-accent/90 italic line-clamp-1 pl-4.5">
+                            <div className="text-[9.5px] text-indigo-300 italic line-clamp-1 pl-4.5">
                               ⚡ {project.roleMatchReason}
                             </div>
                           )}
@@ -717,7 +694,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                               e.stopPropagation();
                               handleTriggerGitHubAction('action_github_projects');
                             }}
-                            className="flex-1 py-1 rounded-lg text-[10px] font-semibold bg-accent/20 hover:bg-accent/30 text-accent flex items-center justify-center gap-1 transition-colors"
+                            className="flex-1 py-1 rounded-lg text-[10.5px] font-semibold bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 flex items-center justify-center gap-1 transition-colors"
                           >
                             <Sparkles className="w-3 h-3" />
                             <span>+ Add to Resume</span>
@@ -728,7 +705,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                               e.stopPropagation();
                               handleTriggerGitHubAction('action_github_skills');
                             }}
-                            className="py-1 px-2.5 rounded-lg text-[10px] font-medium bg-white/5 hover:bg-white/10 text-text-secondary transition-colors"
+                            className="py-1 px-2.5 rounded-lg text-[10.5px] font-medium bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 transition-colors"
                           >
                             <span>Sync Skills</span>
                           </button>
@@ -740,7 +717,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                             e.stopPropagation();
                             handleTriggerGitHubAction('cl_github_story');
                           }}
-                          className="flex-1 py-1 rounded-lg text-[10px] font-semibold bg-accent/20 hover:bg-accent/30 text-accent flex items-center justify-center gap-1 transition-colors"
+                          className="flex-1 py-1 rounded-lg text-[10.5px] font-semibold bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 flex items-center justify-center gap-1 transition-colors"
                         >
                           <Sparkles className="w-3 h-3" />
                           <span>Weave Project Story into Letter</span>
@@ -756,7 +733,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
         {/* API Key Alert if missing */}
         {!hasApiKey && (
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-950/40 border border-amber-800/60 text-xs text-amber-200 shrink-0">
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 shrink-0">
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-amber-400 shrink-0" />
               <span>Missing {settings.provider.toUpperCase()} API key</span>
@@ -764,130 +741,133 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <button
               type="button"
               onClick={onOpenSettings}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium text-[11px] transition-colors shadow-sm active:scale-95"
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium text-[11px] transition-colors shadow-xs active:scale-95"
             >
               Configure
             </button>
           </div>
         )}
 
-        {/* 3. Scrollable Past Requests / History Thread */}
+        {/* 3. Past Requests / History Thread (No clipping, natural layout) */}
         {history.length > 0 && (
-          <div
-            ref={historyContainerRef}
-            className="flex flex-col gap-2 max-h-[190px] overflow-y-auto pr-1 no-scrollbar border-b border-border-subtle/70 pb-2"
-          >
-            <div className="flex items-center justify-between px-1 text-[10px] text-text-muted font-semibold uppercase tracking-wider sticky top-0 bg-[#171724]/95 backdrop-blur-sm z-10 py-0.5">
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                Past Requests ({history.length})
+          <div className="flex flex-col gap-2 border-b border-white/[0.06] pb-2.5">
+            <div className="flex items-center justify-between px-0.5 text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-3 h-3 text-zinc-400" />
+                <span>Recent Requests ({history.length})</span>
               </span>
               {onClearHistory && (
                 <button
                   type="button"
                   onClick={onClearHistory}
-                  className="hover:text-text-primary text-[9.5px] hover:underline"
+                  className="hover:text-zinc-200 text-[9.5px] hover:underline transition-colors"
                 >
                   Clear All
                 </button>
               )}
             </div>
 
-            {history.map((item) => {
-              const isExpanded = expandedHistoryIds.has(item.id);
-              const isResume = item.docMode !== 'cover_letter';
+            <div
+              ref={historyContainerRef}
+              className="flex flex-col gap-2 max-h-[190px] overflow-y-auto pr-0.5 no-scrollbar"
+            >
+              {history.map((item) => {
+                const isExpanded = expandedHistoryIds.has(item.id);
+                const isResume = item.docMode !== 'cover_letter';
 
-              return (
-                <div
-                  key={item.id}
-                  className={`flex flex-col gap-1.5 p-2.5 rounded-xl bg-[#13131f] border border-border/70 text-xs transition-all ${
-                    isResume ? 'border-l-2 border-l-purple-500' : 'border-l-2 border-l-blue-500'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <div className="flex items-center gap-1.5 truncate flex-1">
-                      <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-white/10 text-text-muted font-medium shrink-0">
-                        {isResume ? '📄 Resume' : '✉️ Cover'}
-                      </span>
-                      <span className="font-semibold text-text-primary text-[11px] truncate">
-                        {item.userPrompt}
-                      </span>
-                    </div>
-                    <span className="text-[9px] font-mono text-text-muted shrink-0">
-                      {formatRelativeTime(item.timestamp)}
-                    </span>
-                  </div>
-
+                return (
                   <div
-                    className={`font-mono text-[10.5px] text-text-secondary bg-[#0e0e16] p-2 rounded-lg select-text whitespace-pre-wrap ${
-                      isExpanded ? 'max-h-60 overflow-y-auto' : 'line-clamp-3'
+                    key={item.id}
+                    className={`flex flex-col gap-1.5 p-2.5 rounded-xl bg-[#131320] border border-white/[0.06] text-xs transition-all ${
+                      isResume ? 'border-l-2 border-l-violet-500' : 'border-l-2 border-l-indigo-500'
                     }`}
                   >
-                    {item.response}
-                  </div>
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 truncate flex-1">
+                        <span className="text-[9.5px] px-1.5 py-0.5 rounded-md bg-white/[0.06] text-zinc-300 font-medium shrink-0">
+                          {isResume ? 'Resume' : 'Cover'}
+                        </span>
+                        <span className="font-semibold text-zinc-200 text-[11.5px] truncate">
+                          {item.userPrompt}
+                        </span>
+                      </div>
+                      <span className="text-[9.5px] font-mono text-zinc-400 shrink-0">
+                        {formatRelativeTime(item.timestamp)}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center justify-between pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => toggleHistoryItemExpand(item.id)}
-                      className="text-[9.5px] text-text-muted hover:text-text-primary transition-colors"
+                    <div
+                      className={`font-mono text-[10.5px] text-zinc-300 bg-[#0c0c14] p-2 rounded-lg select-text whitespace-pre-wrap leading-relaxed ${
+                        isExpanded ? 'max-h-60 overflow-y-auto' : 'line-clamp-3'
+                      }`}
                     >
-                      {isExpanded ? 'Show less ▴' : 'Show more ▾'}
-                    </button>
+                      {item.response}
+                    </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center justify-between pt-0.5">
                       <button
                         type="button"
-                        onClick={() => setPrompt(item.userPrompt)}
-                        className="px-2 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-text-muted hover:text-white flex items-center gap-1"
+                        onClick={() => toggleHistoryItemExpand(item.id)}
+                        className="text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors font-medium"
                       >
-                        <ArrowUpRight className="w-2.5 h-2.5" />
-                        <span>Reuse</span>
+                        {isExpanded ? 'Show less ▴' : 'Show full output ▾'}
                       </button>
 
-                      {item.diffResult && onViewDiff && (
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => onViewDiff(item.diffResult!)}
-                          className="px-2 py-0.5 rounded text-[10px] bg-accent/20 hover:bg-accent/30 text-accent font-medium flex items-center gap-1"
+                          onClick={() => setPrompt(item.userPrompt)}
+                          className="h-6 px-2 rounded-md text-[10.5px] bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 hover:text-white flex items-center gap-1 transition-colors"
                         >
-                          <GitCompare className="w-2.5 h-2.5" />
-                          <span>Diff</span>
+                          <ArrowUpRight className="w-2.5 h-2.5" />
+                          <span>Reuse</span>
                         </button>
-                      )}
 
-                      {onApplyDirect && (
-                        <button
-                          type="button"
-                          onClick={() => onApplyDirect(item.response, item.diffResult?.original)}
-                          className="px-2 py-0.5 rounded text-[10px] bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 font-medium border border-emerald-800/40"
-                        >
-                          Apply
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(item.id, item.response)}
-                        className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-text-muted hover:text-white"
-                        title="Copy raw LaTeX"
-                      >
-                        {copiedId === item.id ? (
-                          <Check className="w-3 h-3 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
+                        {item.diffResult && onViewDiff && (
+                          <button
+                            type="button"
+                            onClick={() => onViewDiff(item.diffResult!)}
+                            className="h-6 px-2 rounded-md text-[10.5px] bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 font-medium flex items-center gap-1 transition-colors"
+                          >
+                            <GitCompare className="w-2.5 h-2.5" />
+                            <span>Diff</span>
+                          </button>
                         )}
-                      </button>
+
+                        {onApplyDirect && (
+                          <button
+                            type="button"
+                            onClick={() => onApplyDirect(item.response, item.diffResult?.original)}
+                            className="h-6 px-2 rounded-md text-[10.5px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-medium border border-emerald-500/30 flex items-center gap-1 transition-colors"
+                          >
+                            <Check className="w-2.5 h-2.5" />
+                            <span>Apply</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(item.id, item.response)}
+                          className="h-6 w-6 rounded-md bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 hover:text-white flex items-center justify-center transition-colors"
+                          title="Copy raw LaTeX"
+                        >
+                          {copiedId === item.id ? (
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
         {/* 4. Text Input Box with Live Token & Char Counter */}
-        <div className="relative flex flex-col rounded-xl bg-[#14141e] border border-border/70 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/40 transition-all duration-150 shadow-inner shrink-0">
+        <div className="relative flex flex-col rounded-xl bg-[#11111b] border border-white/[0.08] focus-within:border-indigo-500/70 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all duration-150 shadow-inner shrink-0">
           <div className="relative flex-1">
             <textarea
               ref={textareaRef}
@@ -900,7 +880,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               placeholder={getPlaceholderText()}
               rows={2}
               disabled={isGenerating}
-              className="w-full px-3.5 pt-2.5 pb-2 pr-8 bg-transparent text-text-primary placeholder:text-text-muted text-xs resize-none outline-none leading-relaxed select-text"
+              className="w-full px-3.5 pt-3 pb-2 pr-8 bg-transparent text-zinc-100 placeholder:text-zinc-400 text-xs resize-none outline-none leading-relaxed select-text"
             />
 
             {prompt && (
@@ -911,71 +891,79 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   setActivePresetId(null);
                 }}
                 title="Clear input"
-                className="absolute right-2 top-2.5 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"
+                className="absolute right-2.5 top-2.5 p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-colors"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* Sub-bar inside textarea for stats */}
-          <div className="flex items-center justify-between px-3 pb-1.5 text-[9.5px] font-mono text-text-muted border-t border-white/[0.03]">
+          {/* Sub-bar inside textarea for live counters */}
+          <div className="flex items-center justify-between px-3 pb-2 text-[10px] font-mono text-zinc-400 border-t border-white/[0.03]">
             <span>
               {promptChars > 0 ? `${promptChars} chars · ~${promptTokens} tokens` : 'Ready to tailor'}
             </span>
-            <span className="hidden sm:inline">Ctrl+Enter to generate</span>
+            <span className="hidden sm:inline">Press Ctrl+Enter to generate</span>
           </div>
         </div>
 
-        {/* 5. Specialized Presets Row with Multi-Row Expansion */}
-        <div className="flex flex-col gap-1.5 pt-0.5 shrink-0">
+        {/* 5. Specialized Presets Row with Clean Segmented Switcher */}
+        <div className="flex flex-col gap-2 pt-0.5 shrink-0">
           <div className="flex items-center justify-between px-0.5">
             {docMode === 'resume' ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 p-0.5 bg-[#0e0e18] rounded-lg border border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setResumeTab('roles')}
-                  className={`text-[10.5px] font-semibold tracking-wide uppercase flex items-center gap-1 transition-colors ${
-                    resumeTab === 'roles' ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
+                  className={`px-2.5 py-1 rounded-md text-[10.5px] font-semibold tracking-wide flex items-center gap-1.5 transition-all ${
+                    resumeTab === 'roles'
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-xs'
+                      : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   <Briefcase className="w-3 h-3" />
-                  <span>Target Role</span>
+                  <span>Target Roles</span>
                 </button>
-                <span className="text-text-muted text-[10px]">·</span>
+
                 <button
                   type="button"
                   onClick={() => setResumeTab('actions')}
-                  className={`text-[10.5px] font-semibold tracking-wide uppercase flex items-center gap-1 transition-colors ${
-                    resumeTab === 'actions' ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
+                  className={`px-2.5 py-1 rounded-md text-[10.5px] font-semibold tracking-wide flex items-center gap-1.5 transition-all ${
+                    resumeTab === 'actions'
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-xs'
+                      : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   <Wand2 className="w-3 h-3" />
-                  <span>Resume Polish</span>
+                  <span>Polish Actions</span>
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 p-0.5 bg-[#0e0e18] rounded-lg border border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setClTab('sections')}
-                  className={`text-[10.5px] font-semibold tracking-wide uppercase flex items-center gap-1 transition-colors ${
-                    clTab === 'sections' ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
+                  className={`px-2.5 py-1 rounded-md text-[10.5px] font-semibold tracking-wide flex items-center gap-1.5 transition-all ${
+                    clTab === 'sections'
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-xs'
+                      : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   <Layers className="w-3 h-3" />
-                  <span>Drafting & Sections</span>
+                  <span>Sections</span>
                 </button>
-                <span className="text-text-muted text-[10px]">·</span>
+
                 <button
                   type="button"
                   onClick={() => setClTab('tones')}
-                  className={`text-[10.5px] font-semibold tracking-wide uppercase flex items-center gap-1 transition-colors ${
-                    clTab === 'tones' ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
+                  className={`px-2.5 py-1 rounded-md text-[10.5px] font-semibold tracking-wide flex items-center gap-1.5 transition-all ${
+                    clTab === 'tones'
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-xs'
+                      : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   <Sliders className="w-3 h-3" />
-                  <span>Letter Tone</span>
+                  <span>Tone</span>
                 </button>
               </div>
             )}
@@ -983,13 +971,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <button
               type="button"
               onClick={() => setIsPresetsExpanded(!isPresetsExpanded)}
-              className="text-[9.5px] text-text-muted hover:text-text-primary transition-colors flex items-center gap-0.5"
+              className="text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors font-medium flex items-center gap-0.5"
             >
               <span>{isPresetsExpanded ? 'Less ▴' : `All (${currentPresets.length}) ▾`}</span>
             </button>
           </div>
 
-          {/* Chips Grid / Wrapped Chips */}
+          {/* Preset Chips */}
           <div className="flex flex-wrap gap-1.5 py-0.5">
             {presetsToShow.map((preset) => {
               const isSelected = activePresetId === preset.id;
@@ -999,13 +987,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   type="button"
                   onClick={() => handleSelectPreset(preset)}
                   title={preset.description}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all duration-150 select-none flex items-center gap-1 border ${
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all duration-150 select-none flex items-center gap-1.5 border ${
                     isSelected
-                      ? 'bg-accent border-accent text-white shadow-sm scale-[1.02]'
-                      : 'bg-[#181826] border-border/60 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary hover:border-border'
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm shadow-indigo-500/30 scale-[1.02]'
+                      : 'bg-[#151524] border-white/[0.06] text-zinc-300 hover:text-white hover:bg-[#1f1f34] hover:border-indigo-500/40'
                   }`}
                 >
-                  {preset.icon && <span className="text-[11px]">{preset.icon}</span>}
+                  {preset.icon && <span>{preset.icon}</span>}
                   <span>{preset.label}</span>
                 </button>
               );
@@ -1014,21 +1002,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
 
-      {/* 6. Sticky Bottom Toolbar */}
-      <div className="px-3.5 py-2.5 bg-[#171724]/98 border-t border-border-subtle/80 flex items-center justify-between gap-2 shrink-0 backdrop-blur-md">
+      {/* 6. Frosted Glass Sticky Bottom Toolbar */}
+      <div className="px-3.5 py-2.5 bg-[#141420]/95 border-t border-white/[0.08] flex items-center justify-between gap-2 shrink-0 backdrop-blur-md">
         <ModelSelector selectedModel={settings.model} onSelectModel={onUpdateModel} />
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           {/* Document auto-repair quick button if available */}
           {onAutoRepair && (
             <button
               type="button"
               onClick={onAutoRepair}
               title="1-Click Fix LaTeX macro errors and restored preamble"
-              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 transition-all active:scale-95 flex items-center gap-1"
+              className="px-2.5 py-1.5 rounded-xl text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 transition-all active:scale-95 flex items-center gap-1.5"
             >
-              <Wand2 className="w-3 h-3 text-amber-400" />
-              <span className="hidden sm:inline">Fix LaTeX</span>
+              <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+              <span>Fix LaTeX</span>
             </button>
           )}
 
@@ -1036,7 +1024,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <button
               type="button"
               onClick={onStop}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-red-200 bg-red-950/60 hover:bg-red-900 border border-red-800/60 shadow-md transition-all duration-150 active:scale-95 animate-pulse"
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold text-rose-200 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 shadow-md transition-all duration-150 active:scale-95 animate-pulse"
             >
               <Square className="w-3.5 h-3.5 fill-current" />
               <span>Stop</span>
@@ -1046,13 +1034,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               type="button"
               onClick={() => handleSubmit()}
               disabled={(!prompt.trim() && !activePresetId) || !hasApiKey}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-accent to-[#8f71ff] hover:from-[#6c48f8] hover:to-[#7f5eff] disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all duration-150 active:scale-95"
+              className="flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-indigo-500/25 transition-all duration-150 active:scale-95"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Generate</span>
               <KeyboardShortcutHint
-                shortcut="Ctrl+Enter"
-                className="ml-1 opacity-75 hidden sm:inline-flex"
+                shortcut="Ctrl+↵"
+                variant="on-accent"
+                className="hidden sm:inline-flex"
               />
             </button>
           )}
