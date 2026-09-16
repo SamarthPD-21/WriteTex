@@ -1,29 +1,12 @@
 import { parseSseStream } from './stream-parser';
 
 /**
- * Maps model names to real, high-speed production endpoints in Google AI Studio.
+ * Normalizes model names for Google AI Studio API.
  */
 export function resolveGeminiModel(model: string): string {
   const clean = (model || '').replace(/^models\//, '').trim();
-  if (!clean) return 'gemini-2.0-flash';
-
-  // Map any hypothetical / versioned 3.x names directly to the official 2.0-flash (sub-second TTFT)
-  if (clean.startsWith('gemini-3.') || clean === 'gemini-3.8-flash' || clean === 'gemini-3.6-flash') {
-    return 'gemini-2.0-flash';
-  }
-  if (clean.includes('flash-lite')) {
-    return 'gemini-2.0-flash-lite';
-  }
-  if (clean === 'gemini-2.5-flash-preview' || clean === 'gemini-2.5-flash') {
-    return 'gemini-2.5-flash';
-  }
-  if (clean.includes('flash')) {
-    return 'gemini-2.0-flash';
-  }
-  if (clean.includes('pro')) {
-    return clean.includes('2.5') ? 'gemini-2.5-pro' : 'gemini-1.5-pro';
-  }
-  return clean || 'gemini-2.0-flash';
+  if (!clean) return 'gemini-3.8-flash';
+  return clean;
 }
 
 export async function* streamGemini(
@@ -34,8 +17,10 @@ export async function* streamGemini(
   temperature = 0.2,
   signal?: AbortSignal
 ): AsyncGenerator<string> {
-  const cleanModel = resolveGeminiModel(model);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const targetModel = resolveGeminiModel(model);
+
+  const makeUrl = (m: string) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${m}:streamGenerateContent?alt=sse&key=${apiKey}`;
 
   // High-speed generation config: disable thinking overhead for sub-second responses
   const payload: any = {
@@ -50,14 +35,13 @@ export async function* streamGemini(
     },
     generationConfig: {
       temperature,
-      // For models supporting thinking (2.5, flash-thinking), budget 0 disables the reasoning wait
       thinkingConfig: {
         thinkingBudget: 0,
       },
     },
   };
 
-  let response = await fetch(url, {
+  let response = await fetch(makeUrl(targetModel), {
     method: 'POST',
     signal,
     headers: {
@@ -66,10 +50,22 @@ export async function* streamGemini(
     body: JSON.stringify(payload),
   });
 
-  // If thinkingConfig is rejected by an older model (HTTP 400), gracefully retry without it
+  // If thinkingConfig is rejected by the model (HTTP 400), gracefully retry without it
   if (!response.ok && payload.generationConfig?.thinkingConfig) {
     delete payload.generationConfig.thinkingConfig;
-    response = await fetch(url, {
+    response = await fetch(makeUrl(targetModel), {
+      method: 'POST',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // If the model endpoint is 404 (not accessible on user's API key tier), fallback to gemini-2.0-flash
+  if (!response.ok && response.status === 404 && targetModel !== 'gemini-2.0-flash') {
+    response = await fetch(makeUrl('gemini-2.0-flash'), {
       method: 'POST',
       signal,
       headers: {

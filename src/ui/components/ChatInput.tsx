@@ -1002,8 +1002,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
 
-      {/* 6. Frosted Glass Sticky Bottom Toolbar */}
-      <div className="px-3.5 py-2.5 bg-[#141420]/95 border-t border-white/[0.08] flex items-center justify-between gap-2 shrink-0 backdrop-blur-md">
+      {/* 6. Solid Elevated Bottom Toolbar */}
+      <div className="relative z-30 px-3.5 py-2.5 bg-[#131320] border-t border-white/[0.08] flex items-center justify-between gap-2 shrink-0">
         <ModelSelector selectedModel={settings.model} onSelectModel={onUpdateModel} />
 
         <div className="flex items-center gap-2">
