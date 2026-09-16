@@ -7,10 +7,13 @@ import { DiffView } from './components/DiffView';
 import { EditView } from './components/EditView';
 import { SettingsView } from './components/SettingsView';
 import { Toast, ToastMessage, ToastAction } from './components/Toast';
+import { ShortcutsModal } from './components/ShortcutsModal';
+import { TemplateLibraryModal } from './components/TemplateLibraryModal';
 import { useEditor } from './hooks/useEditor';
 import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
 import { usePanelPosition } from './hooks/usePanelPosition';
+import { usePanelResize } from './hooks/usePanelResize';
 import { locateWrongSnippetInDoc } from '../diff/smart-replace';
 import { validateLatex } from '../latex/validator';
 import { autoRepairLatexDocument } from '../latex/auto-repair';
@@ -25,6 +28,17 @@ import { RefreshCw } from 'lucide-react';
 
 export type AppView = 'input' | 'streaming' | 'diff' | 'edit' | 'settings';
 
+interface UndoEntry {
+  id: string;
+  from: number;
+  to: number;
+  previousText: string;
+  replacementText: string;
+  fileName: string;
+  timestamp: number;
+  description: string;
+}
+
 export const App: React.FC = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [activeView, setActiveView] = useState<AppView>('input');
@@ -38,6 +52,14 @@ export const App: React.FC = () => {
   const [isApplying, setIsApplying] = useState<boolean>(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isContextInvalidated, setIsContextInvalidated] = useState<boolean>(!isExtensionContextValid());
+  const [fullDocContent, setFullDocContent] = useState<string>('');
+
+  // Modals
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState<boolean>(false);
+
+  // Multi-level undo stack (up to 10 edits)
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
 
   const {
     isEditorReady,
@@ -68,6 +90,7 @@ export const App: React.FC = () => {
   } = useAI(settings);
 
   const { position, handleMouseDown } = usePanelPosition();
+  const { width: panelWidth, handleMouseDownResize } = usePanelResize();
 
   const addToast = useCallback((type: ToastMessage['type'], text: string, action?: ToastAction) => {
     const id = `toast_${Date.now()}_${Math.random()}`;
@@ -81,6 +104,15 @@ export const App: React.FC = () => {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Fetch full document content when panel opens or selection changes
+  useEffect(() => {
+    if (isOpen) {
+      getFullContent().then((content) => {
+        if (content) setFullDocContent(content);
+      });
+    }
+  }, [isOpen, selectedText, getFullContent]);
 
   // Auto-migrate away from deprecated or slow models on load
   useEffect(() => {
@@ -130,28 +162,37 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Handle in-page keyboard shortcuts: Ctrl+Shift+W to toggle
+  // Handle in-page keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'w') {
         e.preventDefault();
         setIsOpen((prev) => !prev);
-      } else if (e.key === 'Escape' && isOpen) {
-        if (activeView === 'settings') {
-          setActiveView('input');
-        } else if (activeView === 'edit') {
-          setActiveView('diff');
-        } else if (activeView === 'streaming') {
-          handleStop();
-        } else {
-          setIsOpen(false);
+      } else if (e.key === 'Escape') {
+        if (isShortcutsOpen) {
+          setIsShortcutsOpen(false);
+        } else if (isTemplatesOpen) {
+          setIsTemplatesOpen(false);
+        } else if (isOpen) {
+          if (activeView === 'settings') {
+            setActiveView('input');
+          } else if (activeView === 'edit') {
+            setActiveView('diff');
+          } else if (activeView === 'streaming') {
+            handleStop();
+          } else {
+            setIsOpen(false);
+          }
         }
+      } else if (e.key === '?' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName) && isOpen) {
+        e.preventDefault();
+        setIsShortcutsOpen((prev) => !prev);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, activeView]);
+  }, [isOpen, activeView, isShortcutsOpen, isTemplatesOpen]);
 
   // Sync AI state with active view & handle smart error recovery
   useEffect(() => {
@@ -218,13 +259,27 @@ export const App: React.FC = () => {
     text: string;
     fileName: string;
   } | null>(null);
-  const [lastRevertable, setLastRevertable] = useState<{
-    from: number;
-    to: number;
-    previousText: string;
-    replacementText: string;
-    fileName: string;
-  } | null>(null);
+
+  const pushUndo = (entry: UndoEntry) => {
+    setUndoStack((prev) => [entry, ...prev].slice(0, 10));
+  };
+
+  const handleUndo = async () => {
+    if (undoStack.length === 0) return;
+    const [latest, ...rest] = undoStack;
+
+    try {
+      const ok = await replaceRange(latest.from, latest.to, latest.previousText);
+      if (ok) {
+        setUndoStack(rest);
+        addToast('info', `↩ Undid: ${latest.description}`);
+      } else {
+        addToast('error', 'Could not revert automatically; please use Ctrl+Z in Overleaf.');
+      }
+    } catch {
+      addToast('error', 'Revert failed; use Ctrl+Z in Overleaf.');
+    }
+  };
 
   const handleGenerate = async (
     prompt: string,
@@ -268,6 +323,7 @@ export const App: React.FC = () => {
     }
 
     const fullDoc = await getFullContent();
+    if (fullDoc) setFullDocContent(fullDoc);
 
     generate(
       prompt,
@@ -306,6 +362,7 @@ export const App: React.FC = () => {
         addToast('error', 'Could not access document content in Overleaf.');
         return;
       }
+      setFullDocContent(fullDoc);
 
       // Guard: Check basic LaTeX syntax before applying
       const syntaxCheck = validateLatex(replacement);
@@ -316,6 +373,7 @@ export const App: React.FC = () => {
       let applied = false;
       let previousOriginalText = '';
       let appliedFrom = -1;
+      let appliedTo = -1;
       let appliedActionDesc = 'Replaced snippet';
 
       // Priority 1: Exact coordinates captured when generation was triggered
@@ -325,6 +383,7 @@ export const App: React.FC = () => {
           applied = await replaceRange(pendingEdit.from, pendingEdit.to, replacement);
           if (applied) {
             appliedFrom = pendingEdit.from;
+            appliedTo = pendingEdit.from + replacement.length;
             previousOriginalText = pendingEdit.text;
             appliedActionDesc = 'Replaced selected snippet';
           }
@@ -343,6 +402,7 @@ export const App: React.FC = () => {
           applied = await replaceRange(loc.from, loc.to, replacement);
           if (applied) {
             appliedFrom = loc.from;
+            appliedTo = loc.from + replacement.length;
             previousOriginalText = loc.matchedText;
             appliedActionDesc =
               loc.reason === 'section_match'
@@ -360,18 +420,21 @@ export const App: React.FC = () => {
 
       if (applied) {
         if (appliedFrom !== -1 && previousOriginalText !== undefined) {
-          setLastRevertable({
+          pushUndo({
+            id: `undo_${Date.now()}`,
             from: appliedFrom,
-            to: appliedFrom + replacement.length,
+            to: appliedTo,
             previousText: previousOriginalText,
             replacementText: replacement,
             fileName: currentFileName,
+            timestamp: Date.now(),
+            description: appliedActionDesc,
           });
         }
 
         addToast('success', `✓ ${appliedActionDesc} in ${currentFileName}`, {
-          label: '↩ Revert / Undo',
-          onClick: () => handleRevert(),
+          label: '↩ Undo',
+          onClick: () => handleUndo(),
         });
 
         reset();
@@ -403,6 +466,7 @@ export const App: React.FC = () => {
         addToast('error', 'Could not access document content in Overleaf.');
         return;
       }
+      setFullDocContent(fullDoc);
 
       const repairResult = autoRepairLatexDocument(fullDoc);
       if (!repairResult.wasRepaired) {
@@ -412,18 +476,21 @@ export const App: React.FC = () => {
 
       const ok = await replaceRange(0, fullDoc.length, repairResult.repairedDoc);
       if (ok) {
-        setLastRevertable({
+        pushUndo({
+          id: `undo_${Date.now()}`,
           from: 0,
           to: repairResult.repairedDoc.length,
           previousText: fullDoc,
           replacementText: repairResult.repairedDoc,
           fileName: currentFileName,
+          timestamp: Date.now(),
+          description: 'Repaired LaTeX macros & preamble',
         });
 
         const fixesSummary = repairResult.repairsMade.slice(0, 3).join(', ');
         addToast('success', `✓ Repaired LaTeX document (${fixesSummary})`, {
-          label: '↩ Revert / Undo',
-          onClick: () => handleRevert(),
+          label: '↩ Undo',
+          onClick: () => handleUndo(),
         });
       } else {
         addToast('error', 'Failed to update document in Overleaf.');
@@ -436,18 +503,36 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleRevert = async () => {
-    if (!lastRevertable) return;
+  const handleInsertTemplate = async (templateLatex: string) => {
     try {
-      const ok = await replaceRange(lastRevertable.from, lastRevertable.to, lastRevertable.previousText);
+      const fullDoc = await getFullContent();
+      const targetFrom = selectionRange && !selectionRange.empty ? selectionRange.from : 0;
+      const targetTo = selectionRange && !selectionRange.empty ? selectionRange.to : (fullDoc?.length ?? 0);
+      const prev = fullDoc ? fullDoc.slice(targetFrom, targetTo) : '';
+
+      const ok = await replaceRange(targetFrom, targetTo, templateLatex);
       if (ok) {
-        addToast('info', `Reverted changes in ${lastRevertable.fileName}`);
-        setLastRevertable(null);
+        pushUndo({
+          id: `undo_${Date.now()}`,
+          from: targetFrom,
+          to: targetFrom + templateLatex.length,
+          previousText: prev,
+          replacementText: templateLatex,
+          fileName: currentFileName,
+          timestamp: Date.now(),
+          description: 'Inserted LaTeX template',
+        });
+
+        addToast('success', `✓ Inserted template into ${currentFileName}`, {
+          label: '↩ Undo',
+          onClick: () => handleUndo(),
+        });
       } else {
-        addToast('error', 'Could not automatically revert; please use Ctrl+Z in Overleaf.');
+        addToast('error', 'Failed to insert template into Overleaf.');
       }
-    } catch {
-      addToast('error', 'Revert failed; use Ctrl+Z in Overleaf.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast('error', `Template insertion failed: ${msg}`);
     }
   };
 
@@ -464,9 +549,15 @@ export const App: React.FC = () => {
       <Panel
         isOpen={isOpen}
         position={position}
+        width={panelWidth}
         onMouseDownHeader={handleMouseDown}
+        onMouseDownResize={handleMouseDownResize}
         isSettingsOpen={activeView === 'settings'}
         onToggleSettings={() => setActiveView(activeView === 'settings' ? 'input' : 'settings')}
+        onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        onOpenTemplates={() => setIsTemplatesOpen(true)}
+        undoCount={undoStack.length}
+        onUndo={handleUndo}
         onMinimize={() => setIsOpen(false)}
         onClose={() => setIsOpen(false)}
         isEditorConnected={isEditorReady}
@@ -493,6 +584,7 @@ export const App: React.FC = () => {
           <ChatInput
             selectedText={selectedText}
             currentFileName={currentFileName}
+            currentFileContent={fullDocContent}
             settings={settings}
             onUpdateModel={(provider, model) => {
               updateSettings({ provider, model });
@@ -511,6 +603,7 @@ export const App: React.FC = () => {
             onApplyDirect={(text: string, original?: string) => handleApplyChanges(text, original)}
             onAutoRepair={handleAutoRepairDocument}
             onClearHistory={() => setHistory([])}
+            onOpenTemplates={() => setIsTemplatesOpen(true)}
           />
         )}
 
@@ -554,6 +647,20 @@ export const App: React.FC = () => {
             onBack={() => setActiveView('input')}
           />
         )}
+
+        {/* Shortcuts Cheat Sheet Modal */}
+        <ShortcutsModal
+          isOpen={isShortcutsOpen}
+          onClose={() => setIsShortcutsOpen(false)}
+        />
+
+        {/* LaTeX Template Library Modal */}
+        <TemplateLibraryModal
+          isOpen={isTemplatesOpen}
+          onClose={() => setIsTemplatesOpen(false)}
+          onInsertTemplate={handleInsertTemplate}
+          defaultCategory={lastMeta?.docMode}
+        />
       </Panel>
     </div>
   );
