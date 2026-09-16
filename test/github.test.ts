@@ -162,6 +162,52 @@ describe('Role-Based GitHub Project Ranker', () => {
     expect((sweProject?.relevanceScore || 0)).toBeGreaterThan(dotfiles?.relevanceScore || 0);
     expect((sweProject?.relevanceScore || 0)).toBeGreaterThan(fork?.relevanceScore || 0);
   });
+
+  it('resolves natural language role titles such as "Senior Software Engineer" correctly', () => {
+    const ranked = rankRepositoriesByRole(sampleRepos, 'Senior Software Engineer');
+    expect(ranked[0].name).toBe('distributed-raft-kv');
+  });
+
+  it('dynamically boosts projects matching technologies in a target Job Description', () => {
+    const jd = 'Looking for a Senior Full Stack Engineer experienced with React, Next.js, and PostgreSQL for our SaaS platform.';
+    const ranked = rankRepositoriesByRole(sampleRepos, 'Software Engineer', jd);
+    expect(ranked[0].name).toBe('nextjs-saas-dashboard');
+  });
+
+  it('penalizes coursework and assignment repositories while boosting complex engineering systems', () => {
+    const reposWithCoursework: GitHubRepo[] = [
+      {
+        name: 'Batch-2--Trimseter-2-',
+        fullName: 'user/Batch-2',
+        description: '',
+        url: 'https://github.com/user/Batch-2',
+        htmlUrl: 'https://github.com/user/Batch-2',
+        language: 'HTML',
+        stars: 0,
+        forks: 0,
+        updatedAt: new Date().toISOString(),
+        topics: [],
+        isFork: false,
+      },
+      {
+        name: 'AxiomDB',
+        fullName: 'user/AxiomDB',
+        description: 'High performance database engine with B-Tree indexing and transactional logging',
+        url: 'https://github.com/user/AxiomDB',
+        htmlUrl: 'https://github.com/user/AxiomDB',
+        language: 'C++',
+        stars: 10,
+        forks: 2,
+        updatedAt: new Date().toISOString(),
+        topics: ['database', 'storage', 'engine'],
+        isFork: false,
+      },
+    ];
+
+    const ranked = rankRepositoriesByRole(reposWithCoursework, 'Software Engineer');
+    expect(ranked[0].name).toBe('AxiomDB');
+    expect((ranked[0].relevanceScore || 0)).toBeGreaterThan(ranked[1].relevanceScore || 0);
+  });
 });
 
 describe('GitHub LaTeX Formatter', () => {
@@ -225,6 +271,32 @@ describe('GitHub LaTeX Formatter', () => {
     expect(latex).toContain('\\section{Technical Skills}');
     expect(latex).toContain('\\textbf{Languages}{: Go, Python}');
     expect(latex).toContain('\\textbf{Frameworks \\& Tools}{:');
+  });
+
+  it('prioritizes verified ground-truth tech stack and dependencies over generic guesses', async () => {
+    const { formatProjectToLatex } = await import('../src/integrations/github/formatter');
+    const enrichedRepo: GitHubRepo = {
+      name: 'Grading-Annotation-Tool',
+      fullName: 'user/Grading-Annotation-Tool',
+      description: '',
+      url: 'https://github.com/user/Grading-Annotation-Tool',
+      htmlUrl: 'https://github.com/user/Grading-Annotation-Tool',
+      language: 'JavaScript',
+      stars: 0,
+      forks: 0,
+      updatedAt: new Date().toISOString(),
+      topics: [],
+      isFork: false,
+      verifiedTechStack: ['Next.js', 'React', 'TypeScript', 'Express', 'Redis', 'Prisma'],
+      manifestDependencies: ['next', 'react', 'express', 'bullmq', 'ioredis', 'prisma'],
+      readmeSummary: 'AI-powered assessment and annotation system for evaluating student answer papers against question rubrics.',
+    };
+
+    const latex = formatProjectToLatex(enrichedRepo);
+    expect(latex).toContain('Next.js, React, TypeScript, Express');
+    expect(latex).not.toContain('Spring Boot');
+    expect(latex).toContain('AI-powered assessment and annotation system');
+    expect(latex).toContain('next, react, express, bullmq');
   });
 });
 

@@ -10,9 +10,14 @@ export interface GitHubRepo {
   updatedAt: string;
   topics: string[];
   isFork: boolean;
+  defaultBranch?: string;
   relevanceScore?: number;
   roleMatchReason?: string;
   selected?: boolean;
+  // Verified ground-truth data extracted from repository code/manifest
+  verifiedTechStack?: string[];
+  manifestDependencies?: string[];
+  readmeSummary?: string;
 }
 
 export interface GitHubAnalysisResult {
@@ -29,5 +34,6 @@ export interface GitHubAnalysisResult {
   topProjects: GitHubRepo[];
   allProjects: GitHubRepo[];
   targetRole?: string;
+  targetJobDescription?: string;
   analyzedAt: number;
 }

@@ -224,7 +224,7 @@ export type RuntimeMessage =
   | { type: 'WRITETEX_GET_SETTINGS' }
   | { type: 'WRITETEX_SAVE_SETTINGS'; payload: Partial<Settings> }
   | { type: 'WRITETEX_VALIDATE_KEY'; payload: { provider: AIProviderId; apiKey: string } }
-  | { type: 'WRITETEX_ANALYZE_GITHUB'; payload: { url: string; targetRole?: string } };
+  | { type: 'WRITETEX_ANALYZE_GITHUB'; payload: { url: string; targetRole?: string; targetJobDescription?: string } };
 
 export type StreamEvent =
   | { type: 'chunk'; text: string }

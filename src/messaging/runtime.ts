@@ -190,7 +190,8 @@ export function streamGenerationFromBackground(
  */
 export async function analyzeGitHubViaBackground(
   url: string,
-  targetRole?: string
+  targetRole?: string,
+  targetJobDescription?: string
 ): Promise<GitHubAnalysisResult> {
   if (!isExtensionContextValid()) {
     throw new Error(CONTEXT_INVALIDATED_MSG);
@@ -201,7 +202,7 @@ export async function analyzeGitHubViaBackground(
       chrome.runtime.sendMessage(
         {
           type: 'WRITETEX_ANALYZE_GITHUB',
-          payload: { url, targetRole },
+          payload: { url, targetRole, targetJobDescription },
         } as RuntimeMessage,
         (response) => {
           if (chrome.runtime.lastError) {

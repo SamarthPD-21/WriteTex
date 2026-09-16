@@ -94,7 +94,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
   }
 
   if (message.type === 'WRITETEX_ANALYZE_GITHUB') {
-    analyzeGitHubProfile(message.payload.url, message.payload.targetRole)
+    analyzeGitHubProfile(message.payload.url, message.payload.targetRole, message.payload.targetJobDescription)
       .then((result) => sendResponse({ success: true, result }))
       .catch((err) => sendResponse({ success: false, error: err instanceof Error ? err.message : String(err) }));
     return true;

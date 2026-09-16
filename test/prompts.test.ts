@@ -188,6 +188,8 @@ describe('Prompt Builder', () => {
     expect(built.userPrompt).toContain('Custom CUDA kernels for FlashAttention-2');
     expect(built.userPrompt).toContain('Custom CUDA kernel engineering and LLM acceleration.');
     expect(built.userPrompt).toContain('Role Relevance:');
+    expect(built.userPrompt).toContain('NOTE: Strictly adhere to the verified technologies listed above.');
+    expect(built.systemPrompt).toContain('STRICT ZERO-HALLUCINATION FOR GITHUB PROJECTS');
   });
 
   it('provides GitHub-specific presets for resume and cover letter', () => {

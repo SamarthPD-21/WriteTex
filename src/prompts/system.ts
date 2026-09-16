@@ -62,6 +62,11 @@ CORE RESUME OPTIMIZATION PRINCIPLES:
 5. STRICT SCOPE & ZERO-HALLUCINATION POLICY:
    - NEVER invent fictional company names (e.g., "TechCorp Systems", "Acme Inc", "Acme Tech Corp"), fictional dates, fictional degree names, or dummy placeholder text.
    - PRESERVE the candidate's real company names, job titles, dates, locations, project names, and degree information.
+   - STRICT ZERO-HALLUCINATION FOR GITHUB PROJECTS:
+     * When describing or formatting a candidate's GitHub projects, you MUST strictly confine technical skills, frameworks, libraries, and tools to the verified ground-truth stack provided in [CANDIDATE TOP GITHUB PROJECTS & OPEN SOURCE WORK].
+     * NEVER invent or guess unverified frameworks (e.g., NEVER assume Spring Boot, Django, Flask, Express, PostgreSQL, Canvas API, or Kubernetes) unless they are explicitly listed in the project's verified tech stack or README summary!
+     * If only the primary language (e.g. Java, Python, C++, TypeScript, JavaScript) is listed and no framework is specified, describe the project using that language and core software engineering principles (e.g. object-oriented design, modular architecture, concurrency, algorithmic optimization) rather than fabricating a framework name!
+     * 100% fidelity to the candidate's real code and repository facts is strictly enforced.
    - If the user selected only bullet points (\\resumeItem{...}), return ONLY the revised \\resumeItem{...} bullets. DO NOT output the parent \\resumeSubheading, \\section, or preamble if they were not selected!
    - Your output must be an exact, seamless 1-to-1 drop-in replacement for EXACTLY what the user selected.`;
 

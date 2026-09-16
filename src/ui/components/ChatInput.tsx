@@ -315,22 +315,28 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [currentFileName]);
 
-  // Auto re-rank repositories when targetRole changes
+  // Auto re-rank repositories when targetRole, activePresetId, or jobDescription changes
   useEffect(() => {
     if (githubAnalysis && githubAnalysis.allProjects && githubAnalysis.allProjects.length > 0) {
-      const reranked = rankRepositoriesByRole(githubAnalysis.allProjects, targetRole);
+      const effectiveRole = targetRole.trim() || activePresetId || undefined;
+      const reranked = rankRepositoriesByRole(
+        githubAnalysis.allProjects,
+        effectiveRole,
+        jobDescription.trim() || undefined
+      );
       setGithubAnalysis((prev) =>
         prev
           ? {
               ...prev,
-              targetRole,
+              targetRole: effectiveRole,
+              targetJobDescription: jobDescription.trim() || undefined,
               topProjects: reranked.slice(0, 4),
               allProjects: reranked,
             }
           : null
       );
     }
-  }, [targetRole]);
+  }, [targetRole, activePresetId, jobDescription]);
 
   // JD Keyword Gap Analysis (live calculation)
   const keywordGapResult = useMemo(() => {
@@ -355,7 +361,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     setGithubError(null);
 
     try {
-      const result = await analyzeGitHubViaBackground(githubUrl.trim(), targetRole);
+      const effectiveRole = targetRole.trim() || activePresetId || undefined;
+      const result = await analyzeGitHubViaBackground(
+        githubUrl.trim(),
+        effectiveRole,
+        jobDescription.trim() || undefined
+      );
       setGithubAnalysis(result);
       setIsGithubExpanded(true);
     } catch (err: unknown) {
