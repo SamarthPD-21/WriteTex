@@ -268,14 +268,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onClick={() =>
               onUpdateSettings({
                 provider: 'gemini',
-                model: 'gemini-3.8-flash',
+                model: 'gemini-2.0-flash',
                 customModelId: '',
               })
             }
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/40 transition-all shadow-sm active:scale-95"
           >
             <Zap className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Switch to Gemini 3.8 Flash (Fastest · Sub-second)</span>
+            <span>Switch to Gemini 2.0 Flash (Fastest · Sub-second)</span>
           </button>
         </div>
       </div>

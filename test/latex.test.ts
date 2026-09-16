@@ -101,3 +101,24 @@ describe('LaTeX Context Builder', () => {
     expect(ctx.surroundingEnvironment).toBe('equation');
   });
 });
+
+describe('LaTeX Auto-Repair', () => {
+  it('repairs bracket typos like \\underline[...] and truncated macros', async () => {
+    const { autoRepairLatexDocument } = await import('../src/latex/auto-repair');
+    const broken = `
+      \\begin{document}
+      section{Experience}
+      \\resumeSubheading{Google}{SWE}
+      \\resumeItemListStart
+        \\resumeItem{Built feature with \\underline[1696 (3-Star)}}
+      \\resumeItemListEnd
+      \\end{document}
+    `;
+
+    const result = autoRepairLatexDocument(broken);
+    expect(result.wasRepaired).toBe(true);
+    expect(result.repairedDoc).toContain('\\section{Experience}');
+    expect(result.repairedDoc).toContain('\\underline{1696 (3-Star)}');
+    expect(result.repairedDoc).toContain('\\documentclass');
+  });
+});

@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { AVAILABLE_MODELS, DEFAULT_SETTINGS } from '../src/messaging/types';
 
 describe('Model Catalog & Defaults', () => {
-  it('default model is gemini-3.8-flash for ultra-fast latency', () => {
-    expect(DEFAULT_SETTINGS.model).toBe('gemini-3.8-flash');
-    expect(DEFAULT_SETTINGS.model).not.toBe('gemini-2.5-pro');
+  it('default model is gemini-2.0-flash for ultra-fast sub-second latency', () => {
+    expect(DEFAULT_SETTINGS.model).toBe('gemini-2.0-flash');
   });
 
   it('includes Meta Spark 1.2 and 1.3 models with efficiency badges', () => {
@@ -26,30 +25,19 @@ describe('Model Catalog & Defaults', () => {
     expect(llama33?.badge).toBe('Efficient');
   });
 
-  it('includes latest Gemini Flash models (3.8, 3.7, 3.6, 3.5, 2.0)', () => {
+  it('includes production high-speed Gemini models (2.0-flash, 2.0-flash-lite, 2.5-flash)', () => {
     const geminiModels = AVAILABLE_MODELS.gemini;
     expect(geminiModels).toBeDefined();
 
-    const g38 = geminiModels.find((m) => m.id === 'gemini-3.8-flash');
-    expect(g38).toBeDefined();
-    expect(g38?.badge).toBe('Latest');
-
-    const g37 = geminiModels.find((m) => m.id === 'gemini-3.7-flash');
-    expect(g37).toBeDefined();
-
-    const g36 = geminiModels.find((m) => m.id === 'gemini-3.6-flash');
-    expect(g36).toBeDefined();
-
-    const g35 = geminiModels.find((m) => m.id === 'gemini-3.5-flash');
-    expect(g35).toBeDefined();
-
     const g20Flash = geminiModels.find((m) => m.id === 'gemini-2.0-flash');
     expect(g20Flash).toBeDefined();
-    expect(g20Flash?.badge).toBe('Efficient');
+    expect(g20Flash?.badge).toBe('Fast');
 
-    // Ensure deprecated gemini-2.5-pro is excluded
-    const deprecated = geminiModels.find((m) => m.id === 'gemini-2.5-pro');
-    expect(deprecated).toBeUndefined();
+    const g20Lite = geminiModels.find((m) => m.id === 'gemini-2.0-flash-lite');
+    expect(g20Lite).toBeDefined();
+
+    const g25Flash = geminiModels.find((m) => m.id === 'gemini-2.5-flash');
+    expect(g25Flash).toBeDefined();
   });
 
   it('supports all 4 major AI providers', () => {

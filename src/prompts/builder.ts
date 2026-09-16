@@ -141,14 +141,34 @@ ${codeHeader}
 ${context.selectedText}
 
 [USER INSTRUCTION]
-${userQuery}`;
+${userQuery}
+
+(Note: Return ONLY the raw replacement LaTeX snippet for the selected code. Be concise for high-speed generation.)`;
+  } else if (context.currentFileContent && context.currentFileContent.trim().length > 0) {
+    // When no selection is made, supply document code so the model can pinpoint errors or target sections
+    const doc = context.currentFileContent.trim();
+    const docSnippet = doc.length <= 10000 ? doc : doc.slice(0, 10000);
+
+    fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
+${contextDescription ? contextDescription : 'None specified.'}
+${context.currentLineNumber ? `Active line: ${context.currentLineNumber}` : ''}
+
+[DOCUMENT CODE]
+${docSnippet}
+
+[USER INSTRUCTION]
+${userQuery}
+
+(Note: Return ONLY the targeted LaTeX snippet or section to replace. Do NOT reprint the full document if only fixing an error or updating a section. Be fast and concise.)`;
   } else if (context.currentLineText) {
     fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 Current line (${context.currentLineNumber || 1}): ${context.currentLineText}
 
 [USER INSTRUCTION]
-${userQuery}`;
+${userQuery}
+
+(Note: Return ONLY the replacement LaTeX snippet. Be concise.)`;
   } else {
     fullUserPrompt = `${targetHeader}${githubSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}

@@ -103,6 +103,12 @@ export function autoRepairLatexDocument(doc: string): AutoRepairResult {
     [/(?<![\\a-zA-Z])(?:SubHeadingListEnd|resumeSubHeadingListEnd)\b/g, '\\resumeSubHeadingListEnd', 'Repaired \\resumeSubHeadingListEnd'],
     [/(?<![\\a-zA-Z])(?:resumeProjectHeading)\b/g, '\\resumeProjectHeading', 'Repaired \\resumeProjectHeading'],
     [/(?<![\\a-zA-Z])(?:xtit|textit)\{/g, '\\textit{', 'Repaired \\textit{'],
+    // Bracket typos instead of braces: e.g. \underline[1696...}
+    [/(?<![\\a-zA-Z])\\underline\[([^}\n]+)\}/g, '\\underline{$1}', 'Repaired \\underline[...} to \\underline{...}'],
+    [/(?<![\\a-zA-Z])\\underline\[([^\]\n]+)\]/g, '\\underline{$1}', 'Repaired \\underline[...] to \\underline{...}'],
+    [/(?<![\\a-zA-Z])\\textbf\[([^}\n]+)\}/g, '\\textbf{$1}', 'Repaired \\textbf[...} to \\textbf{...}'],
+    [/(?<![\\a-zA-Z])\\textit\[([^}\n]+)\}/g, '\\textit{$1}', 'Repaired \\textit[...} to \\textit{...}'],
+    [/(?<![\\a-zA-Z])\\emph\[([^}\n]+)\}/g, '\\emph{$1}', 'Repaired \\emph[...} to \\emph{...}'],
   ];
 
   for (const [regex, replacement, label] of macroReplacements) {
@@ -110,6 +116,13 @@ export function autoRepairLatexDocument(doc: string): AutoRepairResult {
       text = text.replace(regex, replacement);
       repairsMade.push(label);
     }
+  }
+
+  // 1.5. Fix runaway / unclosed \resumeItem{...} before another item or list end
+  const unclosedItemRegex = /(\\resumeItem\{[^\n}]*?)(\r?\n\s*(?:\\resumeItem\{|\\resumeItemListEnd|\\end\{itemize\}))/g;
+  if (unclosedItemRegex.test(text)) {
+    text = text.replace(unclosedItemRegex, '$1}$2');
+    repairsMade.push('Inserted missing "}" for unclosed \\resumeItem');
   }
 
   // 2. Check for missing preamble
