@@ -13,6 +13,8 @@ import { useAI } from './hooks/useAI';
 import { usePanelPosition } from './hooks/usePanelPosition';
 import { applyFuzzyPatch } from '../diff/apply';
 import { DiffResult } from '../diff/types';
+import { isExtensionContextValid } from '../messaging/runtime';
+import { RefreshCw } from 'lucide-react';
 
 export type AppView = 'input' | 'streaming' | 'diff' | 'edit' | 'settings';
 
@@ -23,6 +25,7 @@ export const App: React.FC = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isApplying, setIsApplying] = useState<boolean>(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [isContextInvalidated, setIsContextInvalidated] = useState<boolean>(!isExtensionContextValid());
 
   const {
     isEditorReady,
@@ -153,6 +156,19 @@ export const App: React.FC = () => {
     } else if (aiStatus === 'error') {
       if (aiError) {
         if (
+          aiError.includes('Extension updated') ||
+          aiError.includes('Extension context invalidated')
+        ) {
+          setIsContextInvalidated(true);
+          addToast(
+            'warning',
+            'Extension updated in Chrome. Please refresh this tab (Ctrl+R / F5) to reconnect.',
+            {
+              label: '🔄 Refresh Tab',
+              onClick: () => window.location.reload(),
+            }
+          );
+        } else if (
           aiError.includes('gemini-2.5-pro') ||
           aiError.includes('gemini-3.1-pro-preview') ||
           aiError.includes('no longer available')
@@ -270,6 +286,22 @@ export const App: React.FC = () => {
         isEditorConnected={isEditorReady}
       >
         <Toast toasts={toasts} onDismiss={dismissToast} />
+
+        {isContextInvalidated && (
+          <div className="flex items-center justify-between p-2.5 mx-3 mt-2 rounded-xl bg-amber-950/80 border border-amber-600/50 text-amber-200 text-xs shadow-md animate-panel-in">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-spin" />
+              <span className="font-medium leading-tight">Extension reloaded. Refresh tab to reconnect.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-semibold transition-colors shrink-0 active:scale-95"
+            >
+              Refresh
+            </button>
+          </div>
+        )}
 
         {activeView === 'input' && (
           <ChatInput

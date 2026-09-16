@@ -8,9 +8,28 @@ import {
 } from './types';
 
 /**
+ * Checks if the Chrome extension context is still valid.
+ * When an extension is reloaded, old content scripts lose context until the tab is refreshed.
+ */
+export function isExtensionContextValid(): boolean {
+  try {
+    return Boolean(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
+  } catch {
+    return false;
+  }
+}
+
+export const CONTEXT_INVALIDATED_MSG =
+  'Extension updated. Please refresh this Overleaf tab (Ctrl+R / F5) to reconnect.';
+
+/**
  * Fetch settings from the service worker
  */
 export async function getSettingsFromBackground(): Promise<Settings> {
+  if (!isExtensionContextValid()) {
+    return DEFAULT_SETTINGS;
+  }
+
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendMessage(
@@ -37,6 +56,10 @@ export async function getSettingsFromBackground(): Promise<Settings> {
  * Save settings via service worker
  */
 export async function saveSettingsToBackground(settings: Partial<Settings>): Promise<Settings> {
+  if (!isExtensionContextValid()) {
+    return DEFAULT_SETTINGS;
+  }
+
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendMessage(
@@ -61,6 +84,10 @@ export async function validateKeyViaBackground(
   provider: AIProviderId,
   apiKey: string
 ): Promise<boolean> {
+  if (!isExtensionContextValid()) {
+    return false;
+  }
+
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendMessage(
@@ -89,12 +116,19 @@ export function streamGenerationFromBackground(
   onDone: (fullText: string) => void,
   onError: (error: string) => void
 ): () => void {
+  if (!isExtensionContextValid()) {
+    onError(CONTEXT_INVALIDATED_MSG);
+    return () => {};
+  }
+
   let port: chrome.runtime.Port | null = null;
 
   try {
     port = chrome.runtime.connect({ name: 'WRITETEX_STREAM' });
   } catch (err: unknown) {
-    onError(err instanceof Error ? err.message : 'Failed to connect to background service worker');
+    const isInvalidated =
+      err instanceof Error && err.message.includes('Extension context invalidated');
+    onError(isInvalidated ? CONTEXT_INVALIDATED_MSG : 'Failed to connect to background service worker');
     return () => {};
   }
 
@@ -120,7 +154,12 @@ export function streamGenerationFromBackground(
 
   port.onDisconnect.addListener(() => {
     if (chrome.runtime.lastError) {
-      onError(chrome.runtime.lastError.message || 'Port disconnected');
+      const msg = chrome.runtime.lastError.message || '';
+      if (msg.includes('Extension context invalidated')) {
+        onError(CONTEXT_INVALIDATED_MSG);
+      } else {
+        onError(msg || 'Port disconnected');
+      }
     }
   });
 
@@ -128,7 +167,9 @@ export function streamGenerationFromBackground(
   try {
     port.postMessage({ type: 'START_GENERATE', request });
   } catch (err: unknown) {
-    onError(err instanceof Error ? err.message : 'Failed to send generate request to background');
+    const isInvalidated =
+      err instanceof Error && err.message.includes('Extension context invalidated');
+    onError(isInvalidated ? CONTEXT_INVALIDATED_MSG : 'Failed to send generate request to background');
   }
 
   return () => {
