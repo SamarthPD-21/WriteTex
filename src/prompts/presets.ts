@@ -199,7 +199,7 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
     icon: '🐙',
     description: 'Format analyzed top GitHub projects into \\resumeProjectHeading with Google XYZ bullets',
     userPrompt:
-      'Transform the analyzed top GitHub projects into a high-impact LaTeX Projects section. Format each project using the template convention:\n\\resumeProjectHeading{\\textbf{Project Name} $|$ \\emph{Tech Stack}}{\\href{https://github.com/...}{\\underline{github.com/...}}}\n\\resumeItemListStart\n  \\resumeItem{Accomplished [X] by doing [Y] as measured by [Z] (concrete metrics, latency, scale, stars).}\n  \\resumeItem{Architectural design, system constraints, or core engineering achievement.}\n\\resumeItemListEnd\nTailor the achievements and technical depth directly to the target role.',
+      'Transform the analyzed top GitHub projects into a high-impact LaTeX Projects section. Format each project using the template convention:\n\\resumeProjectHeading{\\textbf{Project Name} $|$ \\emph{Tech Stack}}{\\href{https://github.com/...}{\\underline{github.com/...}}}\n\\resumeItemListStart\n  \\resumeItem{Accomplished [X] by doing [Y] as measured by [Z] (concrete metrics, latency, scale, stars).}\n  \\resumeItem{Architectural design, system constraints, or core engineering achievement.}\n\\resumeItemListEnd\nStrictly cap the Tech Stack in \\emph{...} to 3-4 core technologies (e.g. \\emph{Java, Spring Boot, Oracle DB}) so it stays on a single line. Do not list secondary utilities (Git, CI/CD, JUnit, REST APIs) in the heading or stuff them in bullets. Tailor the achievements and technical depth directly to the target role.',
   },
   {
     id: 'action_github_skills',

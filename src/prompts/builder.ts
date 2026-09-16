@@ -114,10 +114,10 @@ export function buildPrompt(
       githubSection += `- **${project.name}** (${project.url})\n`;
       githubSection += `  Primary Language: ${project.language} | Stars: ${project.stars} | Forks: ${project.forks}\n`;
       if (project.verifiedTechStack && project.verifiedTechStack.length > 0) {
-        githubSection += `  Verified Tech Stack: ${project.verifiedTechStack.join(', ')}\n`;
+        githubSection += `  Verified Tech Stack: ${project.verifiedTechStack.slice(0, 4).join(', ')}\n`;
       }
       if (project.manifestDependencies && project.manifestDependencies.length > 0) {
-        githubSection += `  Verified Dependencies: ${project.manifestDependencies.join(', ')}\n`;
+        githubSection += `  Verified Dependencies: ${project.manifestDependencies.slice(0, 4).join(', ')}\n`;
       }
       if (project.readmeSummary) {
         githubSection += `  Verified Project Summary: ${project.readmeSummary}\n`;
@@ -131,7 +131,8 @@ export function buildPrompt(
         githubSection += `  Role Relevance: ${project.roleMatchReason}\n`;
       }
     }
-    githubSection += `NOTE: Strictly adhere to the verified technologies listed above. Do NOT invent or guess unverified frameworks (such as Spring Boot, Django, etc.).\n\n`;
+    githubSection += `NOTE: Strictly adhere to the verified technologies listed above. Do NOT invent or guess unverified frameworks (such as Spring Boot, Django, etc.).\n`;
+    githubSection += `CRITICAL FORMATTING: In \\resumeProjectHeading{\\textbf{...} $|$ \\emph{Tech Stack}}, strictly cap the tech stack in \\emph{...} to 3-4 core technologies maximum (e.g. \\emph{Java, Spring Boot, Oracle DB}). Never dump 5+ tools or laundry-list utilities into the heading or bullets!\n\n`;
   }
 
   const isErrorFixing =

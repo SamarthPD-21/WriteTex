@@ -241,5 +241,85 @@ describe('Prompt Builder', () => {
     expect(built.userPrompt).toContain('Line: 3');
     expect(built.userPrompt).toContain('job aborted, no legal \\end found');
   });
+
+  it('enforces strict 3-4 keyword limit and anti-keyword-stuffing rules in system prompts', () => {
+    const built = buildPrompt(
+      'Format projects section',
+      {
+        selectedText: '\\resumeProjectHeading{\\textbf{Portfolio}}{2024}',
+        docMode: 'resume',
+      }
+    );
+
+    // RESUME_SYSTEM_PROMPT assertions
+    expect(built.systemPrompt).toContain('PROJECT HEADINGS & CONCISE TECH STACKS (STRICT 3-4 KEYWORD LIMIT)');
+    expect(built.systemPrompt).toContain('3 to 4 core technologies maximum');
+    expect(built.systemPrompt).toContain('NEVER dump 5 or more tools into the heading');
+    expect(built.systemPrompt).toContain('ANTI-KEYWORD-STUFFING IN BULLET POINTS');
+    expect(built.systemPrompt).toContain('integrate at most 1-2 relevant technologies per bullet naturally');
+  });
+
+  it('caps verified tech stack and dependencies to 4 items in GitHub prompt context', () => {
+    const built = buildPrompt(
+      'Add projects',
+      {
+        githubAnalysis: {
+          username: 'janedev',
+          profileUrl: 'https://github.com/janedev',
+          publicReposCount: 15,
+          topLanguages: [{ language: 'Java', count: 10 }],
+          allTopics: ['spring', 'database'],
+          allProjects: [],
+          topProjects: [
+            {
+              name: 'Author-Book-Management',
+              fullName: 'janedev/Author-Book-Management',
+              description: 'Library backend service',
+              url: 'https://github.com/janedev/Author-Book-Management',
+              htmlUrl: 'https://github.com/janedev/Author-Book-Management',
+              language: 'Java',
+              stars: 12,
+              forks: 2,
+              updatedAt: new Date().toISOString(),
+              topics: ['spring-boot', 'jpa', 'oracle', 'rest-api', 'junit', 'mockito', 'docker'],
+              isFork: false,
+              verifiedTechStack: [
+                'Java 17',
+                'Spring Boot 3',
+                'Spring Data JPA',
+                'Oracle DB',
+                'REST APIs',
+                'JUnit',
+                'Mockito',
+                'Git',
+                'CI/CD',
+              ],
+              manifestDependencies: [
+                'spring-boot-starter-web',
+                'spring-boot-starter-data-jpa',
+                'ojdbc8',
+                'junit-jupiter',
+                'mockito-core',
+                'lombok',
+              ],
+              selected: true,
+            },
+          ],
+          analyzedAt: Date.now(),
+        },
+      }
+    );
+
+    // Verified tech stack should be sliced to 4 items max
+    expect(built.userPrompt).toContain('Verified Tech Stack: Java 17, Spring Boot 3, Spring Data JPA, Oracle DB');
+    expect(built.userPrompt).not.toContain('Verified Tech Stack: Java 17, Spring Boot 3, Spring Data JPA, Oracle DB, REST APIs');
+
+    // Dependencies sliced to 4 items max
+    expect(built.userPrompt).toContain('Verified Dependencies: spring-boot-starter-web, spring-boot-starter-data-jpa, ojdbc8, junit-jupiter');
+    expect(built.userPrompt).not.toContain('mockito-core');
+
+    // Prompt contains the explicit formatting rule
+    expect(built.userPrompt).toContain('CRITICAL FORMATTING: In \\resumeProjectHeading{\\textbf{...} $|$ \\emph{Tech Stack}}, strictly cap the tech stack in \\emph{...} to 3-4 core technologies maximum');
+  });
 });
 

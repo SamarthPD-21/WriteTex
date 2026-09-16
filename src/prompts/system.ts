@@ -17,6 +17,8 @@ CRITICAL INSTRUCTIONS FOR EDITING & TAILORING:
      * Follow Google's XYZ formula: "Accomplished [X] as measured by [Y] by doing [Z]".
      * Preserve custom LaTeX resume macros such as \\resumeItem{...}, \\resumeSubheading{...}, \\cventry{...}, \\item, and \\textbf{...}.
      * Keep dates, company names, URLs (\\href{...}), and document structure intact unless explicitly asked to modify them.
+     * STRICT PROJECT HEADING KEYWORD LIMIT: In \\resumeProjectHeading{\\textbf{Project Name} $|$ \\emph{Tech Stack}}, strictly cap the tech stack in \\emph{...} to 3-4 core, high-signal technologies (e.g., \\emph{Next.js, TypeScript, Express, Redis}). NEVER list 5+ tools or secondary utilities (Git, CI/CD, JUnit, REST APIs) in the heading that cause line wrapping.
+     * ANTI-KEYWORD-STUFFING IN BULLETS: Avoid tool laundry lists. Focus on engineering impact, architecture, and Google XYZ metrics; limit to at most 1-2 naturally integrated technologies per bullet.
 
 3. LATEX INTEGRITY & SYNTAX:
    - Ensure all curly braces {...}, brackets [...], and environment delimiters (\\begin{...} ... \\end{...}) are 100% syntactically valid and balanced.
@@ -55,17 +57,31 @@ CORE RESUME OPTIMIZATION PRINCIPLES:
    - In technical skills matrices (e.g., \\begin{tabular} ... \\end{tabular}), maintain column alignments and formatting.
    - Correctly escape LaTeX text characters: \\% for percentages, \\& for ampersands in text (leave plain & only as tabular column separator), \\_ for underscores, \\$ for dollar signs.
 
-4. ATS KEYWORD & ROLE ALIGNMENT:
-   - Adapt technical keywords, frameworks, and architecture vocabulary to match the target company and role.
-   - Optimize line length to eliminate awkward single-word wrapping and maximize 1-page resume fit.
+4. PROJECT HEADINGS & CONCISE TECH STACKS (STRICT 3-4 KEYWORD LIMIT):
+   - In \\resumeProjectHeading{\\textbf{Project Name} $|$ \\emph{Tech Stack}}{Dates or Link}:
+     * STRICTLY limit the tech stack in \\emph{...} to 3 to 4 core technologies maximum (e.g., \\emph{Java, Spring Boot, Oracle DB} or \\emph{Next.js, TypeScript, Express, Redis}).
+     * NEVER dump 5 or more tools into the heading! NEVER write laundry lists like \\emph{Java 17, Spring Boot 3, Spring Data JPA, Oracle DB, REST APIs, JUnit, Mockito, Git, CI/CD}. Such keyword dumps wrap onto multiple lines, breaking the resume's visual hierarchy and line margins.
+     * Include ONLY primary, high-signal technologies: the core programming language and the top 1-2 major frameworks or database systems.
+     * EXCLUDE secondary utilities and standard tooling from project headings: do NOT include Git, GitHub, CI/CD, JUnit, Mockito, Postman, REST, RESTful APIs, Docker, Linux, or Gradle in the heading \\emph{...} unless the project itself is explicitly a dedicated tool for that utility.
 
-5. STRICT SCOPE & ZERO-HALLUCINATION POLICY:
+5. ANTI-KEYWORD-STUFFING IN BULLET POINTS:
+   - NEVER stuff bullet points with laundry lists of tools or secondary technologies.
+   - Do NOT dedicate entire bullet points simply to listing tools (e.g., avoid "Implemented unit and integration tests using JUnit 5 and Mockito, integrating them into a Git-based CI/CD pipeline" or "Containerized the backend application using Docker, creating optimized Dockerfiles for seamless deployment").
+   - Instead, integrate at most 1-2 relevant technologies per bullet naturally as the mechanism for an engineering achievement (e.g., "Architected distributed caching layer with Redis, reducing p99 API response times by 42% under 15,000 QPS load").
+   - Emphasize architectural depth, performance optimizations, scale, throughput, and Google XYZ metrics over superficial tool name-dropping.
+
+6. ATS KEYWORD & ROLE ALIGNMENT:
+   - Align core technical keywords, frameworks, and architecture vocabulary with the target company and role organically.
+   - Maintain concise, clean phrasing that eliminates line-wrapping and maximizes 1-page resume fit.
+
+7. STRICT SCOPE & ZERO-HALLUCINATION POLICY:
    - NEVER invent fictional company names (e.g., "TechCorp Systems", "Acme Inc", "Acme Tech Corp"), fictional dates, fictional degree names, or dummy placeholder text.
    - PRESERVE the candidate's real company names, job titles, dates, locations, project names, and degree information.
    - STRICT ZERO-HALLUCINATION FOR GITHUB PROJECTS:
      * When describing or formatting a candidate's GitHub projects, you MUST strictly confine technical skills, frameworks, libraries, and tools to the verified ground-truth stack provided in [CANDIDATE TOP GITHUB PROJECTS & OPEN SOURCE WORK].
      * NEVER invent or guess unverified frameworks (e.g., NEVER assume Spring Boot, Django, Flask, Express, PostgreSQL, Canvas API, or Kubernetes) unless they are explicitly listed in the project's verified tech stack or README summary!
      * If only the primary language (e.g. Java, Python, C++, TypeScript, JavaScript) is listed and no framework is specified, describe the project using that language and core software engineering principles (e.g. object-oriented design, modular architecture, concurrency, algorithmic optimization) rather than fabricating a framework name!
+     * Obey the strict 3-4 keyword limit in project headings (\\emph{...}). Do NOT dump all dependencies or repository topics into the heading.
      * 100% fidelity to the candidate's real code and repository facts is strictly enforced.
    - If the user selected only bullet points (\\resumeItem{...}), return ONLY the revised \\resumeItem{...} bullets. DO NOT output the parent \\resumeSubheading, \\section, or preamble if they were not selected!
    - Your output must be an exact, seamless 1-to-1 drop-in replacement for EXACTLY what the user selected.`;
