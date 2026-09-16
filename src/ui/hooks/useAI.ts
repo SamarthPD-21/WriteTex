@@ -4,6 +4,8 @@ import { streamGenerationFromBackground } from '../../messaging/runtime';
 import { computeDiff } from '../../diff/compute';
 import { DiffResult } from '../../diff/types';
 
+import { locateWrongSnippetInDoc } from '../../diff/smart-replace';
+
 export type AIStatus = 'idle' | 'streaming' | 'done' | 'error';
 
 export function useAI(settings: Settings) {
@@ -56,7 +58,7 @@ export function useAI(settings: Settings) {
           setStreamedText(finalOutput);
 
           // If there was a selection, compute diff between original and replacement.
-          // Fall back to document content for error fixing / full document repair.
+          // Fall back to intelligent snippet location in document content.
           let original = context.selectedText || '';
           if (!original.trim()) {
             if (
@@ -67,7 +69,14 @@ export function useAI(settings: Settings) {
             ) {
               original = context.currentFileContent || context.currentLineText || '';
             } else {
-              original = context.currentLineText || context.currentFileContent || '';
+              // Intelligently identify the exact target section or block in current document
+              const doc = context.currentFileContent || '';
+              const loc = locateWrongSnippetInDoc(doc, finalOutput);
+              if (loc && loc.matchedText && loc.matchedText.trim().length > 0) {
+                original = loc.matchedText;
+              } else {
+                original = context.currentLineText || context.currentFileContent || '';
+              }
             }
           }
 

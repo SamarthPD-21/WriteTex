@@ -414,6 +414,10 @@ export const App: React.FC = () => {
             appliedActionDesc =
               loc.reason === 'section_match'
                 ? 'Replaced matching section'
+                : loc.reason === 'section_body_match'
+                ? 'Replaced section projects'
+                : loc.reason === 'section_insert_slot'
+                ? 'Inserted section in standard order'
                 : loc.reason === 'content_anchor'
                 ? 'Replaced matching code block'
                 : loc.reason === 'preamble'

@@ -79,6 +79,97 @@ resumeSubheading
     expect(matched).not.toContain('\\section{Experience}');
   });
 
+  it('replaces \\section{Selected Projects} when replacement has \\section{Projects}', () => {
+    const docWithSelectedProjects = `\\documentclass{article}
+\\begin{document}
+\\section{Experience}
+\\resumeSubheading{Company}{Dates}{Title}{Location}
+
+\\section{Selected Projects}
+\\resumeSubHeadingListStart
+  \\resumeProjectHeading{\\textbf{Old Synthesis Engine}}{url}
+  \\resumeItemListStart
+    \\resumeItem{Old bullet.}
+  \\resumeItemListEnd
+\\resumeSubHeadingListEnd
+
+\\section{Technical Skills}
+\\begin{itemize}
+\\item Languages: Java
+\\end{itemize}
+\\end{document}`;
+
+    const newProjects = `\\section{Projects}
+\\resumeSubHeadingListStart
+  \\resumeProjectHeading{\\textbf{Grading-Annotation-Tool}}{GitHub}
+\\resumeSubHeadingListEnd`;
+
+    const loc = locateWrongSnippetInDoc(docWithSelectedProjects, newProjects);
+    expect(loc).toBeDefined();
+    expect(loc?.reason).toBe('section_match');
+
+    const matched = loc ? docWithSelectedProjects.slice(loc.from, loc.to) : '';
+    expect(matched).toContain('\\section{Selected Projects}');
+    expect(matched).toContain('Old Synthesis Engine');
+    expect(matched).not.toContain('\\section{Experience}');
+    expect(matched).not.toContain('\\section{Technical Skills}');
+  });
+
+  it('replaces corrupted section header such as "elected Projects}" without backslash', () => {
+    const docWithCorruptedHeader = `\\documentclass{article}
+\\begin{document}
+\\section{Experience}
+\\resumeSubHeadingListEnd
+
+elected Projects}
+\\resumeSubHeadingListStart
+  \\resumeProjectHeading{\\textbf{Old App}}{url}
+\\resumeSubHeadingListEnd
+
+\\section{Technical Skills}
+\\end{document}`;
+
+    const newProjects = `\\section{Projects}
+\\resumeSubHeadingListStart
+  \\resumeProjectHeading{\\textbf{New App}}{url}
+\\resumeSubHeadingListEnd`;
+
+    const loc = locateWrongSnippetInDoc(docWithCorruptedHeader, newProjects);
+    expect(loc).toBeDefined();
+    expect(loc?.reason).toBe('section_match');
+
+    const matched = loc ? docWithCorruptedHeader.slice(loc.from, loc.to) : '';
+    expect(matched).toContain('elected Projects}');
+    expect(matched).toContain('Old App');
+    expect(matched).not.toContain('\\section{Experience}');
+  });
+
+  it('replaces existing projects section even if replacement lacks \\section header', () => {
+    const doc = `\\documentclass{article}
+\\begin{document}
+\\section{Experience}
+...
+\\section{Selected Projects}
+\\resumeSubHeadingListStart
+  \\resumeProjectHeading{\\textbf{Old App}}{url}
+\\resumeSubHeadingListEnd
+\\section{Technical Skills}
+\\end{document}`;
+
+    const projectBlockOnly = `\\resumeProjectHeading{\\textbf{New App}}{github.com/new}
+\\resumeItemListStart
+  \\resumeItem{New bullet.}
+\\resumeItemListEnd`;
+
+    const loc = locateWrongSnippetInDoc(doc, projectBlockOnly);
+    expect(loc).toBeDefined();
+    expect(loc?.reason).toBe('section_body_match');
+
+    const matched = loc ? doc.slice(loc.from, loc.to) : '';
+    expect(matched).toContain('Selected Projects');
+    expect(matched).toContain('Old App');
+  });
+
   it('locates broken block by content anchor even with corrupted macros', () => {
     const fixedExperienceBlock = `\\resumeSubheading
   {Software Engineer II --- Core Infrastructure}{New York, NY}

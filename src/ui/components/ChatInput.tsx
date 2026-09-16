@@ -1005,11 +1005,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                             const latex = formatAllProjectsToLatex(githubAnalysis.topProjects);
                             onApplyDirect(latex);
                           }}
-                          title="Directly insert standard Jake's Resume project block into Overleaf"
+                          title="Directly replace matching Jake's Resume project section in Overleaf"
                           className="py-1.5 px-2.5 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-white font-medium text-[10.5px] flex items-center justify-center gap-1 transition-colors"
                         >
                           <Wand2 className="w-3 h-3 text-amber-400" />
-                          <span>Insert Block</span>
+                          <span>Replace Section</span>
                         </button>
                       )}
 
