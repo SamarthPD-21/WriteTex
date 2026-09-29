@@ -14,13 +14,13 @@ export interface SnippetLocation {
 }
 
 /**
- * Safely locates a snippet inside a document.
- * 1. Exact match (single occurrence).
- * 2. Exact match with proximity if multiple occurrences exist and approximateIndex is provided.
- * 3. Whitespace-normalized match.
- * 4. Localized search strictly near approximateIndex.
+ * Safely locates a snippet inside a document, from strictest to loosest:
+ * 1. Exact match (single occurrence, or the one closest to approximateIndex).
+ * 2. Trimmed exact match.
+ * 3. Whitespace-insensitive match (re-indented or re-wrapped snippets).
+ * 4. Line-window fuzzy match (snippet was lightly edited since it was captured).
  *
- * NEVER matches offset 0 when the snippet is elsewhere in the document.
+ * Returns null instead of guessing when a match is ambiguous.
  */
 export function findSnippetLocation(
   doc: string,
@@ -29,109 +29,107 @@ export function findSnippetLocation(
 ): SnippetLocation | null {
   if (!doc || !snippet) return null;
 
-  const rawSnippet = snippet;
   const trimmed = snippet.trim();
   if (!trimmed) return null;
 
-  // 1. Try finding all exact occurrences of rawSnippet
-  const indices: number[] = [];
-  let pos = doc.indexOf(rawSnippet, 0);
-  while (pos !== -1) {
-    indices.push(pos);
-    pos = doc.indexOf(rawSnippet, pos + 1);
+  // 1 & 2. Exact occurrences of the raw, then trimmed, snippet
+  for (const candidate of trimmed === snippet ? [snippet] : [snippet, trimmed]) {
+    const indices = findAllIndices(doc, candidate);
+    if (indices.length === 0) continue;
+    if (indices.length > 1 && approximateIndex === undefined) return null;
+    const from = pickClosest(indices, approximateIndex);
+    return { from, to: from + candidate.length, matchedText: candidate };
   }
 
-  if (indices.length === 1) {
-    return {
-      from: indices[0],
-      to: indices[0] + rawSnippet.length,
-      matchedText: rawSnippet,
-    };
-  }
+  // 3. Whitespace-insensitive match
+  const normalized = findNormalized(doc, trimmed, approximateIndex);
+  if (normalized !== undefined) return normalized;
 
-  if (indices.length > 1) {
-    if (approximateIndex !== undefined && approximateIndex >= 0) {
-      let closest = indices[0];
-      let minDist = Math.abs(indices[0] - approximateIndex);
-      for (let i = 1; i < indices.length; i++) {
-        const d = Math.abs(indices[i] - approximateIndex);
-        if (d < minDist) {
-          minDist = d;
-          closest = indices[i];
-        }
-      }
-      return {
-        from: closest,
-        to: closest + rawSnippet.length,
-        matchedText: rawSnippet,
-      };
-    }
-    // Ambiguous multiple occurrences without approximate index
-    return null;
-  }
-
-  // 2. Try trimmed snippet if raw snippet has different leading/trailing whitespace
-  if (trimmed !== rawSnippet) {
-    const trimmedIndices: number[] = [];
-    let tPos = doc.indexOf(trimmed, 0);
-    while (tPos !== -1) {
-      trimmedIndices.push(tPos);
-      tPos = doc.indexOf(trimmed, tPos + 1);
-    }
-
-    if (trimmedIndices.length === 1) {
-      return {
-        from: trimmedIndices[0],
-        to: trimmedIndices[0] + trimmed.length,
-        matchedText: trimmed,
-      };
-    }
-
-    if (trimmedIndices.length > 1 && approximateIndex !== undefined) {
-      let closest = trimmedIndices[0];
-      let minDist = Math.abs(trimmedIndices[0] - approximateIndex);
-      for (let i = 1; i < trimmedIndices.length; i++) {
-        const d = Math.abs(trimmedIndices[i] - approximateIndex);
-        if (d < minDist) {
-          minDist = d;
-          closest = trimmedIndices[i];
-        }
-      }
-      return {
-        from: closest,
-        to: closest + trimmed.length,
-        matchedText: trimmed,
-      };
-    }
-  }
-
-  // 3. Localized search strictly around approximateIndex
-  if (approximateIndex !== undefined && approximateIndex >= 0 && approximateIndex < doc.length) {
-    const dmp = new DiffMatchPatch();
-    dmp.Match_Threshold = 0.45;
-    dmp.Match_Distance = 1000;
-
-    const windowStart = Math.max(0, approximateIndex - 800);
-    const windowEnd = Math.min(doc.length, approximateIndex + trimmed.length + 800);
-    const localSlice = doc.slice(windowStart, windowEnd);
-
-    const relativeMatch = dmp.match_main(localSlice, trimmed, Math.max(0, approximateIndex - windowStart));
-    if (relativeMatch !== -1) {
-      const matchIdx = windowStart + relativeMatch;
-      return {
-        from: matchIdx,
-        to: matchIdx + trimmed.length,
-        matchedText: doc.slice(matchIdx, matchIdx + trimmed.length),
-      };
-    }
-  }
-
-  // 4. Whole-document fuzzy search as fallback
+  // 4. Fuzzy line-window match
   return findSnippetLocationFuzzy(doc, snippet, approximateIndex);
 }
 
+function findAllIndices(doc: string, needle: string): number[] {
+  const indices: number[] = [];
+  let pos = doc.indexOf(needle);
+  while (pos !== -1) {
+    indices.push(pos);
+    pos = doc.indexOf(needle, pos + 1);
+  }
+  return indices;
+}
+
+function pickClosest(indices: number[], approximateIndex?: number): number {
+  if (approximateIndex === undefined || approximateIndex < 0) return indices[0];
+  let best = indices[0];
+  for (const idx of indices) {
+    if (Math.abs(idx - approximateIndex) < Math.abs(best - approximateIndex)) best = idx;
+  }
+  return best;
+}
+
 /**
- * Performs full-document fuzzy search when exact or windowed matches fail.
+ * Collapses every whitespace run to a single space and records, for each
+ * normalized character, its offset in the original text.
+ */
+function normalizeWithMap(text: string): { normalized: string; map: number[] } {
+  let normalized = '';
+  const map: number[] = [];
+  let inSpace = false;
+  for (let i = 0; i < text.length; i++) {
+    if (/\s/.test(text[i])) {
+      if (!inSpace && normalized.length > 0) {
+        normalized += ' ';
+        map.push(i);
+      }
+      inSpace = true;
+    } else {
+      normalized += text[i];
+      map.push(i);
+      inSpace = false;
+    }
+  }
+  return { normalized, map };
+}
+
+/**
+ * Returns a location, null when the snippet occurs several times with no way
+ * to disambiguate, or undefined when it does not occur at all.
+ */
+function findNormalized(
+  doc: string,
+  trimmed: string,
+  approximateIndex?: number
+): SnippetLocation | null | undefined {
+  const needle = trimmed.replace(/\s+/g, ' ');
+  const { normalized, map } = normalizeWithMap(doc);
+  const hits = findAllIndices(normalized, needle);
+  if (hits.length === 0) return undefined;
+
+  const locations = hits.map((h) => ({ from: map[h], to: map[h + needle.length - 1] + 1 }));
+  if (locations.length > 1 && approximateIndex === undefined) return null;
+  const from = pickClosest(locations.map((l) => l.from), approximateIndex);
+  const to = locations.find((l) => l.from === from)!.to;
+  return { from, to, matchedText: doc.slice(from, to) };
+}
+
+/** Character-level similarity in [0, 1] based on Levenshtein distance. */
+export function textSimilarity(a: string, b: string): number {
+  const x = a.replace(/\s+/g, ' ').trim();
+  const y = b.replace(/\s+/g, ' ').trim();
+  if (x === y) return 1;
+  const maxLen = Math.max(x.length, y.length);
+  if (maxLen === 0) return 1;
+  const dmp = new DiffMatchPatch();
+  dmp.Diff_Timeout = 0.2;
+  const diffs = dmp.diff_main(x, y);
+  return 1 - dmp.diff_levenshtein(diffs) / maxLen;
+}
+
+/**
+ * Full-document fuzzy search for a snippet whose text drifted slightly
+ * (a word was edited, a macro lost its backslash, etc.). Compares the snippet
+ * against every window of lines of similar size and takes the best one.
  */
 export function findSnippetLocationFuzzy(
   doc: string,
@@ -140,32 +138,61 @@ export function findSnippetLocationFuzzy(
 ): SnippetLocation | null {
   if (!doc || !snippet) return null;
   const trimmed = snippet.trim();
-  if (!trimmed) return null;
+  if (trimmed.length < 8) return null;
 
-  try {
-    const dmp = new DiffMatchPatch();
-    dmp.Match_Threshold = 0.5;
-    dmp.Match_Distance = Math.max(doc.length, 2000);
-
-    const approx = approximateIndex !== undefined && approximateIndex >= 0
-      ? Math.min(approximateIndex, doc.length - 1)
-      : Math.floor(doc.length / 2);
-
-    const matchIdx = dmp.match_main(doc, trimmed, approx);
-    if (matchIdx !== -1) {
-      // Find the end boundary based on trimmed length or matching newline/brace
-      const matchedSlice = doc.slice(matchIdx, matchIdx + trimmed.length);
-      return {
-        from: matchIdx,
-        to: matchIdx + trimmed.length,
-        matchedText: matchedSlice,
-      };
-    }
-  } catch {
-    // Fallthrough on any dmp failure
+  // Line table with offsets of first/last non-whitespace characters
+  const lines: { start: number; end: number }[] = [];
+  let offset = 0;
+  for (const raw of doc.split('\n')) {
+    const lead = raw.length - raw.trimStart().length;
+    lines.push({ start: offset + lead, end: offset + raw.trimEnd().length });
+    offset += raw.length + 1;
   }
 
-  return null;
+  const snippetLineCount = trimmed.split('\n').length;
+  const targetLen = trimmed.replace(/\s+/g, ' ').length;
+
+  type Candidate = { from: number; to: number; score: number };
+  const candidates: Candidate[] = [];
+
+  for (const size of new Set([snippetLineCount - 1, snippetLineCount, snippetLineCount + 1])) {
+    if (size < 1) continue;
+    for (let i = 0; i + size <= lines.length; i++) {
+      const from = lines[i].start;
+      const to = lines[i + size - 1].end;
+      if (to <= from) continue;
+      const windowText = doc.slice(from, to);
+      const windowLen = windowText.replace(/\s+/g, ' ').length;
+      if (windowLen < targetLen * 0.7 || windowLen > targetLen * 1.4) continue;
+
+      const score = textSimilarity(windowText, trimmed);
+      if (score >= 0.75) candidates.push({ from, to, score });
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  // Prefer windows near the expected position when we know it
+  const rank = (c: Candidate) => {
+    if (approximateIndex === undefined || approximateIndex < 0) return c.score;
+    const distance = Math.abs(c.from - approximateIndex);
+    return c.score - Math.min(distance / Math.max(doc.length, 1), 1) * 0.1;
+  };
+  candidates.sort((a, b) => rank(b) - rank(a));
+  const best = candidates[0];
+
+  // Far from the expected position, demand a stronger match
+  if (approximateIndex !== undefined && Math.abs(best.from - approximateIndex) > 2000 && best.score < 0.85) {
+    return null;
+  }
+
+  // Refuse to guess between two distinct, equally good locations
+  const rival = candidates.find(
+    (c) => (c.to <= best.from || c.from >= best.to) && Math.abs(rank(c) - rank(best)) < 0.01
+  );
+  if (rival && approximateIndex === undefined) return null;
+
+  return { from: best.from, to: best.to, matchedText: doc.slice(best.from, best.to) };
 }
 
 /**

@@ -5,11 +5,15 @@ import { streamMeta } from './providers/meta';
 import { streamGemini } from './providers/gemini';
 import { streamOpenAI } from './providers/openai';
 import { streamAnthropic } from './providers/anthropic';
+import { ProviderRequest, StreamPart } from './providers/types';
+
+// Room for a full two-page document rewrite; only generated tokens are billed
+const MAX_OUTPUT_TOKENS = 16384;
 
 export async function* routeAndStreamAI(
   request: GenerateRequest,
   signal?: AbortSignal
-): AsyncGenerator<string> {
+): AsyncGenerator<StreamPart> {
   const settings = await getStoredSettings();
 
   const provider = request.provider || settings.provider;
@@ -22,35 +26,32 @@ export async function* routeAndStreamAI(
     );
   }
 
-  const { systemPrompt, userPrompt } = buildPrompt(
-    request.userPrompt,
-    request.context,
-    request.presetKey
-  );
+  const { systemPrompt, userPrompt } = buildPrompt(request.userPrompt, request.context, request.presetKey);
 
-  let stream: AsyncGenerator<string>;
+  const providerRequest: ProviderRequest = {
+    apiKey,
+    model,
+    systemPrompt,
+    userPrompt,
+    temperature: request.temperature,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    signal,
+  };
 
   switch (provider) {
     case 'meta':
-      stream = streamMeta(apiKey, model, systemPrompt, userPrompt, request.temperature);
-      break;
+      yield* streamMeta(providerRequest);
+      return;
     case 'gemini':
-      stream = streamGemini(apiKey, model, systemPrompt, userPrompt, request.temperature, signal);
-      break;
+      yield* streamGemini(providerRequest);
+      return;
     case 'openai':
-      stream = streamOpenAI(apiKey, model, systemPrompt, userPrompt, request.temperature);
-      break;
+      yield* streamOpenAI(providerRequest);
+      return;
     case 'anthropic':
-      stream = streamAnthropic(apiKey, model, systemPrompt, userPrompt, request.temperature);
-      break;
+      yield* streamAnthropic(providerRequest);
+      return;
     default:
       throw new Error(`Unsupported AI provider: ${provider}`);
-  }
-
-  let accumulated = '';
-
-  for await (const chunk of stream) {
-    accumulated += chunk;
-    yield chunk;
   }
 }

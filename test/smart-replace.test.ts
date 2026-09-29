@@ -166,8 +166,14 @@ elected Projects}
     expect(loc?.reason).toBe('section_body_match');
 
     const matched = loc ? doc.slice(loc.from, loc.to) : '';
-    expect(matched).toContain('Selected Projects');
     expect(matched).toContain('Old App');
+
+    // The header and list wrappers are kept because the replacement lacks them
+    const applied = doc.slice(0, loc!.from) + (loc!.replacementText ?? projectBlockOnly) + doc.slice(loc!.to);
+    expect(applied).toContain('\\section{Selected Projects}\n\\resumeSubHeadingListStart');
+    expect(applied).toContain('New App');
+    expect(applied).not.toContain('Old App');
+    expect(applied).toContain('\\resumeSubHeadingListEnd\n\\section{Technical Skills}');
   });
 
   it('locates broken block by content anchor even with corrupted macros', () => {

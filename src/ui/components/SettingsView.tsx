@@ -26,21 +26,21 @@ const PROVIDER_CONFIGS: Record<
     sub: '3.1 Pro & 2.0',
     keyUrl: 'https://aistudio.google.com/app/apikey',
     keyPlaceholder: 'Paste your Google AI Studio API key...',
-    hint: 'Official Gemini 3.1 Pro Preview and Gemini 2.0 Flash / Flash Lite.',
+    hint: 'Fast Gemini Flash models; the default for quick edits.',
   },
   openai: {
     label: 'OpenAI',
     sub: 'GPT-4o & o3',
     keyUrl: 'https://platform.openai.com/api-keys',
     keyPlaceholder: 'Paste your OpenAI API key (sk-...)...',
-    hint: 'Flagship GPT-4o and o3-mini STEM reasoning models.',
+    hint: 'GPT and o-series models, or any model ID via Custom model ID.',
   },
   anthropic: {
     label: 'Claude',
     sub: 'Sonnet 3.7 & Haiku',
     keyUrl: 'https://console.anthropic.com/settings/keys',
     keyPlaceholder: 'Paste your Anthropic API key (sk-ant-...)...',
-    hint: 'Claude 3.7 Sonnet hybrid reasoning and Claude 3.5 Haiku efficiency.',
+    hint: 'Claude Opus 5 for the best tailoring, Sonnet 5 or Haiku 4.5 for speed.',
   },
 };
 
@@ -191,7 +191,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
           <p className="text-[10px] text-text-muted">
-            Keys are encrypted locally in your browser storage (<code className="text-text-secondary">chrome.storage.local</code>). Direct browser-to-API calls only.
+            Stored unencrypted in this browser’s extension storage (<code className="text-text-secondary">chrome.storage.local</code>) and sent only to the provider you pick. Use a key with a spending limit.
           </p>
         </div>
 
@@ -247,7 +247,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               Temperature: <span className="font-mono text-accent font-bold">{settings.temperature}</span>
             </label>
             <span className="text-[10px] text-text-muted">
-              {settings.temperature <= 0.2 ? 'Deterministic & Rigorous' : 'More Creative'}
+              {settings.temperature <= 0.2 ? 'Precise' : 'More varied'} · ignored by models that fix it
             </span>
           </div>
           <input

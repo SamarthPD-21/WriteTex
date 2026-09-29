@@ -21,6 +21,10 @@ export async function getStoredSettings(): Promise<Settings> {
         ) {
           stored.model = 'gemini-3.8-flash';
           await chrome.storage.local.set({ [STORAGE_KEY]: stored });
+        } else if (/^claude-3/.test(stored.model)) {
+          // Claude 3.x models are retired
+          stored.model = 'claude-sonnet-5';
+          await chrome.storage.local.set({ [STORAGE_KEY]: stored });
         }
 
         return {

@@ -1,40 +1,46 @@
 import { useEffect, useState, useCallback } from 'react';
 import { overleafAdapter } from '../../adapters/overleaf';
-import { SelectionRange, CurrentLineInfo } from '../../messaging/types';
+import { SelectionRange, CurrentLineInfo, EditOutcome } from '../../messaging/types';
 
 export function useEditor() {
-  const [selectedText, setSelectedText] = useState<string>('');
-  const [currentFileName, setCurrentFileName] = useState<string>('main.tex');
   const [selectionRange, setSelectionRange] = useState<SelectionRange | null>(null);
   const [currentLine, setCurrentLine] = useState<CurrentLineInfo | null>(null);
+  const [currentFileName, setCurrentFileName] = useState<string>('main.tex');
+  const [docLength, setDocLength] = useState<number>(0);
   const [isEditorReady, setIsEditorReady] = useState<boolean>(false);
 
-  // Initialize and check editor ready
   useEffect(() => {
     let mounted = true;
 
+    const refreshName = () => {
+      const name = overleafAdapter.getCurrentFileName();
+      if (name) setCurrentFileName(name);
+    };
+
     overleafAdapter.waitForEditor(10000).then((ready) => {
-      if (mounted) {
-        setIsEditorReady(ready);
-        const name = overleafAdapter.getCurrentFileName();
-        if (name) setCurrentFileName(name);
-      }
+      if (!mounted) return;
+      setIsEditorReady(ready);
+      refreshName();
     });
 
-    // Listen to selection changes in Overleaf
-    const cleanup = overleafAdapter.onSelectionChange((text) => {
-      if (mounted) {
-        setSelectedText(text);
-        const name = overleafAdapter.getCurrentFileName();
-        if (name) setCurrentFileName(name);
-
-        overleafAdapter.getSelectionRange().then((range) => {
-          if (mounted) setSelectionRange(range);
-        });
-        overleafAdapter.getCurrentLine().then((line) => {
-          if (mounted) setCurrentLine(line);
-        });
-      }
+    const cleanup = overleafAdapter.onSnapshotChange((snapshot) => {
+      if (!mounted) return;
+      refreshName();
+      if (!snapshot) return;
+      setIsEditorReady(true);
+      // Keep object identity when nothing changed so dependents don't re-render
+      setSelectionRange((prev) =>
+        prev &&
+        prev.from === snapshot.selection.from &&
+        prev.to === snapshot.selection.to &&
+        prev.text === snapshot.selection.text
+          ? prev
+          : snapshot.selection
+      );
+      setCurrentLine((prev) =>
+        prev && prev.from === snapshot.line.from && prev.text === snapshot.line.text ? prev : snapshot.line
+      );
+      setDocLength(snapshot.docLength);
     });
 
     return () => {
@@ -43,32 +49,18 @@ export function useEditor() {
     };
   }, []);
 
-  const refreshContext = useCallback(async () => {
-    const text = await overleafAdapter.getSelectedText();
-    setSelectedText(text || '');
-    const name = overleafAdapter.getCurrentFileName();
-    if (name) setCurrentFileName(name);
-    const range = await overleafAdapter.getSelectionRange();
-    setSelectionRange(range);
-    const line = await overleafAdapter.getCurrentLine();
-    setCurrentLine(line);
-    return { text, name, range, line };
-  }, []);
-
   const getFullContent = useCallback(async (): Promise<string | null> => {
     return overleafAdapter.getCurrentFileContent();
   }, []);
 
-  const replaceSelection = useCallback(async (replacement: string): Promise<boolean> => {
-    return overleafAdapter.replaceSelection(replacement);
-  }, []);
-
-  const replaceRange = useCallback(
-    async (from: number, to: number, replacement: string): Promise<boolean> => {
-      return overleafAdapter.replaceRange(from, to, replacement);
-    },
+  /** Guarded write: only replaces [from, to) if it still holds `expected`. */
+  const applyEdit = useCallback(
+    (from: number, to: number, replacement: string, expected: string): Promise<EditOutcome> =>
+      overleafAdapter.applyEdit(from, to, replacement, expected),
     []
   );
+
+  const selectedText = selectionRange && !selectionRange.empty ? selectionRange.text : '';
 
   return {
     isEditorReady,
@@ -76,9 +68,9 @@ export function useEditor() {
     currentFileName,
     selectionRange,
     currentLine,
-    refreshContext,
+    docLength,
+    projectId: overleafAdapter.getProjectId(),
     getFullContent,
-    replaceSelection,
-    replaceRange,
+    applyEdit,
   };
 }

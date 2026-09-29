@@ -65,17 +65,19 @@ export function buildLatexContext(
           result.enclosingSection = `${lastSection[1]}: ${lastSection[2]}`;
         }
 
-        // Check if inside an environment (e.g. equation, figure, table, align)
-        const openEnvMatches = Array.from(
-          textBeforeSnippet.matchAll(/\\begin\{([a-zA-Z0-9*]+)\}/g)
-        );
-        const closeEnvMatches = Array.from(
-          textBeforeSnippet.matchAll(/\\end\{([a-zA-Z0-9*]+)\}/g)
-        );
-
-        if (openEnvMatches.length > closeEnvMatches.length) {
-          const lastOpen = openEnvMatches[openEnvMatches.length - 1];
-          result.surroundingEnvironment = lastOpen[1];
+        // Innermost environment still open at the snippet (ignoring commented-out lines)
+        const envStack: string[] = [];
+        const uncommented = textBeforeSnippet.replace(/(^|[^\\])%[^\n]*/g, '$1');
+        for (const m of uncommented.matchAll(/\\(begin|end)\{([a-zA-Z0-9*]+)\}/g)) {
+          if (m[1] === 'begin') {
+            envStack.push(m[2]);
+          } else {
+            const openIdx = envStack.lastIndexOf(m[2]);
+            if (openIdx !== -1) envStack.length = openIdx;
+          }
+        }
+        if (envStack.length > 0) {
+          result.surroundingEnvironment = envStack[envStack.length - 1];
         }
       }
     }

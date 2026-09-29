@@ -134,22 +134,41 @@ export function autoRepairLatexDocument(doc: string): AutoRepairResult {
     repairsMade.push('Inserted missing "}" for unclosed \\resumeItem');
   }
 
-  // 2. Check for missing or corrupted preamble (e.g. truncated macros causing No PDF error)
+  // 2. Check for missing or corrupted preamble (e.g. truncated macros causing No PDF error).
+  // Only Jake's-Resume-style documents are restored: any other class (letters, moderncv,
+  // custom .cls files) keeps its own preamble, and \input subfiles are left alone.
+  const macroRepairsMade = repairsMade.length > 0;
+  const usesJakesMacros = /\\resume(?:Item|Subheading|ProjectHeading|SubHeadingListStart)\b/.test(text);
+
   if (text.includes('\\begin{document}')) {
     const beginIdx = text.indexOf('\\begin{document}');
     const preamble = text.slice(0, beginIdx);
 
-    // If preamble has truncated macros, lacks \documentclass, or lacks \usepackage
+    const hasTruncatedPreambleMacros = /^[ \t]*(?:e\{|e\[|and\{|th\{|phtounicode)/m.test(preamble);
+    const classMatch = preamble.match(/\\documentclass(?:\[[^\]]*\])?\{([^}]*)\}/);
+    const isStandardClass = !classMatch || /^(?:article|extarticle)$/.test(classMatch[1].trim());
+    // Macros may live in an \input{...} file, so only infer they are missing when nothing is included
+    const includesOtherFiles = /\\(?:input|include)\{(?!glyphtounicode)/.test(preamble);
+    const definesResumeItem = /\\(?:(?:re)?newcommand|providecommand|NewDocumentCommand)\s*\{?\\resumeItem\b|\\def\\resumeItem\b/.test(preamble);
+    const missingJakesDefinitions =
+      usesJakesMacros && isStandardClass && !includesOtherFiles && !definesResumeItem;
+
     const isCorruptedPreamble =
-      !preamble.includes('\\documentclass') ||
-      /^[ \t]*(?:e\{|e\[|and\{|th\{|phtounicode)/m.test(preamble) ||
-      (preamble.match(/\\usepackage/g) || []).length < 2;
+      hasTruncatedPreambleMacros ||
+      (!classMatch && (usesJakesMacros || macroRepairsMade)) ||
+      missingJakesDefinitions;
 
     if (isCorruptedPreamble) {
       text = JAKES_RESUME_PREAMBLE + text.slice(beginIdx + '\\begin{document}'.length);
       repairsMade.push("Restored complete Jake's Resume preamble & packages (fixed No PDF error)");
     }
-  } else if (!text.includes('\\documentclass')) {
+  } else if (
+    !text.includes('\\documentclass') &&
+    usesJakesMacros &&
+    (macroRepairsMade || text.includes('\\end{document}'))
+  ) {
+    // The top of a root resume file was cut off (a clean subfile never has \end{document}
+    // or broken macros, so it is not touched)
     text = JAKES_RESUME_PREAMBLE + '\n' + text.trimStart();
     repairsMade.push("Restored complete Jake's Resume preamble and macros");
   }

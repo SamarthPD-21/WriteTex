@@ -19,6 +19,18 @@ export interface OverleafDiagnosticsResult {
   summary: string;
 }
 
+/** Text of an element without Material icon ligatures or bidi control marks. */
+function cleanText(el: Element | null | undefined): string {
+  if (!el) return '';
+  let text = el.textContent || '';
+  if (typeof (el as Element).cloneNode === 'function' && typeof (el as Element).querySelectorAll === 'function') {
+    const clone = el.cloneNode(true) as Element;
+    clone.querySelectorAll('.material-symbols, [class*="material-symbols"], [class*="material-icons"]').forEach((n) => n.remove());
+    text = clone.textContent || '';
+  }
+  return text.replace(/[\u200e\u200f\u202a-\u202e]/g, '').trim();
+}
+
 /**
  * Scrapes the Overleaf DOM for active compilation errors and log entries.
  */
@@ -61,22 +73,53 @@ export function scrapeOverleafErrors(rootNode?: Document | Element | null): Over
     }
   }
 
-  // 2. Scrape structured log entries from Overleaf's logs panel
-  const entrySelectors = [
-    '.log-entry',
-    '[class*="log-entry"]',
-    '[class*="log-item"]',
-    '[data-testid*="log-entry"]',
-    '[data-testid*="log-item"]',
-    '.alert-danger',
-  ];
-
+  // 2. Scrape log entries from Overleaf's logs panel
   const processedTexts = new Set<string>();
+
+  // Current Overleaf markup: one .log-entry per message with a titled header and a location.
+  // Reading those parts directly avoids icon ligature text ("expand_more") and duplicates
+  // from nested elements whose class names also contain "log-entry".
+  const structured = Array.from(root.querySelectorAll('.log-entry')).filter(
+    (el) => typeof (el as Element).querySelector === 'function' && (el as Element).querySelector('.log-entry-header-text')
+  ) as Element[];
+
+  for (const el of structured) {
+    const title = cleanText(el.querySelector('.log-entry-header-text'));
+    if (!title) continue;
+    const location = cleanText(el.querySelector('.log-entry-location'));
+    const locationMatch = location.match(/^(.*?),\s*(\d+)\s*$/);
+    const content = cleanText(el.querySelector('.log-entry-content, .log-entry-formatted-content'));
+    const levelLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+    const headerClass = el.querySelector('.log-entry-header-text')?.className || '';
+    const type: OverleafLogEntry['type'] =
+      levelLabel.includes('error') || headerClass.includes('-error')
+        ? 'error'
+        : levelLabel.includes('warning') || headerClass.includes('-warning')
+        ? 'warning'
+        : 'info';
+
+    const key = `${title}|${location}`;
+    if (processedTexts.has(key)) continue;
+    processedTexts.add(key);
+    entries.push({
+      type,
+      title,
+      message: content.slice(0, 400) || title,
+      file: locationMatch ? locationMatch[1] : location || undefined,
+      line: locationMatch ? parseInt(locationMatch[2], 10) : undefined,
+      raw: content.slice(0, 800),
+    });
+  }
+
+  // Older layouts (and simple mocks): parse entry text
+  const entrySelectors = structured.length > 0
+    ? []
+    : ['.log-entry', '[class*="log-entry"]', '[class*="log-item"]', '[data-testid*="log-entry"]', '[data-testid*="log-item"]', '.alert-danger'];
 
   for (const sel of entrySelectors) {
     const elements = Array.from(root.querySelectorAll(sel));
     for (const el of elements) {
-      const text = el.textContent?.trim() || '';
+      const text = cleanText(el);
       if (!text || processedTexts.has(text) || text.length > 800) continue;
       processedTexts.add(text);
 

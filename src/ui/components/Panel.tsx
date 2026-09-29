@@ -2,6 +2,14 @@ import React from 'react';
 import { Sparkles, Settings as SettingsIcon, Minus, X, BookOpen, HelpCircle, Undo2 } from 'lucide-react';
 import { Position } from '../hooks/usePanelPosition';
 
+const EXTENSION_VERSION = (() => {
+  try {
+    return chrome.runtime.getManifest().version;
+  } catch {
+    return '';
+  }
+})();
+
 interface PanelProps {
   isOpen: boolean;
   position: Position;
@@ -45,7 +53,7 @@ export const Panel: React.FC<PanelProps> = ({
         transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
         width: `${width}px`,
       }}
-      className="fixed top-0 left-0 z-[2147483647] max-w-[calc(100vw-24px)] bg-[#12121c]/98 border border-white/[0.08] rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-panel-in transition-[width] duration-75 select-none ring-1 ring-black/50"
+      className="fixed top-0 left-0 z-[2147483647] max-w-[calc(100vw-24px)] h-[min(660px,calc(100vh-24px))] bg-surface-1 border border-line-strong rounded-2xl shadow-panel flex flex-col overflow-hidden animate-panel-in select-none ring-1 ring-black/50 text-zinc-100"
     >
       {/* Left Edge Resize Grip */}
       {onMouseDownResize && (
@@ -61,7 +69,7 @@ export const Panel: React.FC<PanelProps> = ({
       {/* Draggable Header Bar */}
       <div
         onMouseDown={onMouseDownHeader}
-        className="flex items-center justify-between px-3.5 py-2.5 bg-[#171724]/90 border-b border-white/[0.06] cursor-grab active:cursor-grabbing select-none"
+        className="flex items-center justify-between px-3 py-2 bg-surface-2 border-b border-line cursor-grab active:cursor-grabbing select-none shrink-0"
       >
         <div className="flex items-center gap-2">
           {/* Logo icon with glow */}
@@ -72,7 +80,7 @@ export const Panel: React.FC<PanelProps> = ({
           <span className="font-bold text-xs tracking-tight text-white">WriteTex</span>
 
           <span className="text-[9.5px] font-mono px-1.5 py-0.5 bg-white/[0.06] text-zinc-400 rounded-md font-medium">
-            v0.3.0
+            v{EXTENSION_VERSION}
           </span>
 
           {/* Connected badge */}

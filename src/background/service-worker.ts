@@ -7,6 +7,7 @@ import { getStoredSettings, saveStoredSettings, validateProviderKey } from './ke
 import { routeAndStreamAI } from './ai-router';
 import { cleanModelOutput } from '../prompts/builder';
 import { analyzeGitHubProfile } from '../integrations/github/client';
+import { FinishReason } from './providers/types';
 
 console.log('[WriteTex] Service Worker initialized');
 
@@ -33,24 +34,28 @@ chrome.runtime.onConnect.addListener((port) => {
       activeGenerations.set(requestId, { abortController });
 
       let accumulated = '';
+      let finishReason: FinishReason = 'unknown';
 
       try {
         const stream = routeAndStreamAI(msg.request, abortController.signal);
 
-        for await (const chunk of stream) {
-          if (abortController.signal.aborted) {
-            break;
+        for await (const part of stream) {
+          if (abortController.signal.aborted) break;
+          if (part.type === 'finish') {
+            finishReason = part.reason;
+            continue;
           }
-          accumulated += chunk;
-          safePostMessage(port, { type: 'chunk', text: chunk });
+          accumulated += part.text;
+          safePostMessage(port, { type: 'chunk', text: part.text });
         }
 
         if (!abortController.signal.aborted) {
           // Clean model fences for replacement text
           const cleaned = cleanModelOutput(accumulated);
-          safePostMessage(port, { type: 'done', fullText: cleaned });
+          safePostMessage(port, { type: 'done', fullText: cleaned, finishReason });
         }
       } catch (err: unknown) {
+        if (abortController.signal.aborted) return;
         const errMsg = err instanceof Error ? err.message : String(err);
         safePostMessage(port, { type: 'error', error: errMsg });
       } finally {

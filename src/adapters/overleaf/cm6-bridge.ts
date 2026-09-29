@@ -59,6 +59,30 @@ import {
         break;
       }
 
+      case 'GET_SNAPSHOT': {
+        if (!view) {
+          sendResponse(id, { type: 'SNAPSHOT_RESULT', payload: null });
+          return;
+        }
+        const main = view.state.selection.main;
+        const line = view.state.doc.lineAt(main.head);
+        sendResponse(id, {
+          type: 'SNAPSHOT_RESULT',
+          payload: {
+            selection: {
+              from: main.from,
+              to: main.to,
+              text: view.state.sliceDoc(main.from, main.to),
+              empty: main.empty,
+              cursor: main.head,
+            },
+            line: { number: line.number, text: line.text, from: line.from, to: line.to },
+            docLength: view.state.doc.length,
+          },
+        });
+        break;
+      }
+
       case 'GET_CONTENT': {
         if (!view) {
           sendResponse(id, { type: 'CONTENT_RESULT', payload: null });
@@ -133,19 +157,49 @@ import {
           return;
         }
         try {
-          const { from, to, replacement } = command.payload;
+          const { from, to, replacement, expected } = command.payload;
+          const docLength = view.state.doc.length;
+          if (from < 0 || to > docLength || from > to) {
+            sendResponse(id, { type: 'MUTATION_RESULT', success: false, error: 'STALE' });
+            return;
+          }
 
-          view.dispatch({
-            changes: { from, to, insert: replacement },
-            selection: { anchor: from + replacement.length },
-            scrollIntoView: true,
-          });
+          // Compare-and-swap: refuse to write if the target text moved or changed
+          const current = view.state.sliceDoc(from, to);
+          if (typeof expected === 'string' && current !== expected) {
+            sendResponse(id, { type: 'MUTATION_RESULT', success: false, error: 'STALE' });
+            return;
+          }
+
+          // Dispatch only the span that actually differs, so collaborators' edits,
+          // the cursor, and Overleaf history are disturbed as little as possible
+          let prefix = 0;
+          const maxPrefix = Math.min(current.length, replacement.length);
+          while (prefix < maxPrefix && current[prefix] === replacement[prefix]) prefix++;
+          let suffix = 0;
+          const maxSuffix = maxPrefix - prefix;
+          while (
+            suffix < maxSuffix &&
+            current[current.length - 1 - suffix] === replacement[replacement.length - 1 - suffix]
+          ) {
+            suffix++;
+          }
+
+          const changeFrom = from + prefix;
+          const changeTo = to - suffix;
+          const insert = replacement.slice(prefix, replacement.length - suffix);
+          if (changeFrom !== changeTo || insert.length > 0) {
+            view.dispatch({
+              changes: { from: changeFrom, to: changeTo, insert },
+              selection: { anchor: changeFrom + insert.length },
+              scrollIntoView: true,
+              userEvent: 'input.writetex',
+            });
+          }
           view.focus();
 
           const check = view.state.sliceDoc(from, from + replacement.length);
-          const success = check === replacement;
-
-          sendResponse(id, { type: 'MUTATION_RESULT', success });
+          sendResponse(id, { type: 'MUTATION_RESULT', success: check === replacement });
         } catch (err: unknown) {
           sendResponse(id, {
             type: 'MUTATION_RESULT',
@@ -230,10 +284,12 @@ import {
     }
   }
 
+  // Overleaf's DOM mutates constantly; stop observing once the editor is found
   const observer = new MutationObserver(() => {
     checkAndAnnounce();
+    if (announced) observer.disconnect();
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
   checkAndAnnounce();
+  if (!announced) observer.observe(document.body, { childList: true, subtree: true });
 })();

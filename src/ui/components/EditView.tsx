@@ -23,7 +23,7 @@ export const EditView: React.FC<EditViewProps> = ({
           className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to diff</span>
+          <span>Back to review</span>
         </button>
         <span className="font-medium text-text-primary text-[11px]">Manual adjustment</span>
       </div>
@@ -31,7 +31,8 @@ export const EditView: React.FC<EditViewProps> = ({
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        className="flex-1 min-h-[220px] p-3 bg-[#12121b] border border-border rounded-xl font-mono text-xs text-text-primary leading-relaxed resize-none outline-none focus:border-accent"
+        spellCheck={false}
+        className="flex-1 min-h-[220px] p-3 bg-surface-0 border border-line rounded-xl font-mono text-xs text-zinc-100 leading-relaxed resize-none outline-none focus:border-indigo-500/70"
       />
 
       <div className="flex items-center justify-between pt-1 gap-2">
@@ -49,7 +50,7 @@ export const EditView: React.FC<EditViewProps> = ({
           className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-accent hover:bg-accent-hover shadow-md transition-all active:scale-95"
         >
           <Check className="w-3.5 h-3.5" />
-          <span>Apply edited LaTeX</span>
+          <span>Review changes</span>
         </button>
       </div>
     </div>

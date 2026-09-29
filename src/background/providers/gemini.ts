@@ -1,4 +1,6 @@
+import { fetchWithRetry, ProviderError } from './http';
 import { parseSseStream } from './stream-parser';
+import { FinishReason, ProviderRequest, StreamPart } from './types';
 
 /**
  * Normalizes model names for Google AI Studio API.
@@ -9,112 +11,77 @@ export function resolveGeminiModel(model: string): string {
   return clean;
 }
 
-export async function* streamGemini(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string,
-  temperature = 0.2,
-  signal?: AbortSignal
-): AsyncGenerator<string> {
-  const targetModel = resolveGeminiModel(model);
+function mapFinishReason(reason: string | undefined): FinishReason | undefined {
+  if (!reason || reason === 'FINISH_REASON_UNSPECIFIED') return undefined;
+  if (reason === 'STOP') return 'complete';
+  if (reason === 'MAX_TOKENS') return 'truncated';
+  if (/SAFETY|RECITATION|PROHIBITED|BLOCKLIST|SPII/.test(reason)) return 'refused';
+  return 'unknown';
+}
 
-  const makeUrl = (m: string) =>
-    `https://generativelanguage.googleapis.com/v1beta/models/${m}:streamGenerateContent?alt=sse&key=${apiKey}`;
+export async function* streamGemini(req: ProviderRequest): AsyncGenerator<StreamPart> {
+  const targetModel = resolveGeminiModel(req.model);
+  const url = (m: string) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${m}:streamGenerateContent?alt=sse`;
 
-  // High-speed generation config: disable thinking overhead for sub-second responses
   const payload: any = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: userPrompt }],
-      },
-    ],
-    systemInstruction: {
-      parts: [{ text: systemPrompt }],
-    },
+    contents: [{ role: 'user', parts: [{ text: req.userPrompt }] }],
+    systemInstruction: { parts: [{ text: req.systemPrompt }] },
     generationConfig: {
-      temperature,
-      thinkingConfig: {
-        thinkingBudget: 0,
-      },
+      temperature: req.temperature,
+      maxOutputTokens: req.maxOutputTokens,
+      // Editing turns are latency-sensitive: skip thinking where the model allows it
+      thinkingConfig: { thinkingBudget: 0 },
     },
   };
 
-  let response = await fetch(makeUrl(targetModel), {
-    method: 'POST',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  const send = (model: string) =>
+    fetchWithRetry(
+      url(model),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': req.apiKey },
+        body: JSON.stringify(payload),
+      },
+      'Gemini',
+      req.signal
+    );
 
-  // If thinkingConfig is rejected by the model (HTTP 400), gracefully retry without it
-  if (!response.ok && payload.generationConfig?.thinkingConfig) {
+  let response: Response;
+  try {
+    response = await send(targetModel);
+  } catch (err) {
+    // Some models reject a zero thinking budget; retry once without it
+    if (!(err instanceof ProviderError) || err.status !== 400 || req.signal?.aborted) throw err;
     delete payload.generationConfig.thinkingConfig;
-    response = await fetch(makeUrl(targetModel), {
-      method: 'POST',
-      signal,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-  }
-
-  // If the model endpoint is 404 (not accessible on user's API key tier), fallback to gemini-2.0-flash
-  if (!response.ok && response.status === 404 && targetModel !== 'gemini-2.0-flash') {
-    response = await fetch(makeUrl('gemini-2.0-flash'), {
-      method: 'POST',
-      signal,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-  }
-
-  if (!response.ok) {
-    let errMsg = `Gemini API error: HTTP ${response.status}`;
-    try {
-      const errorJson = await response.json();
-      if (errorJson?.error?.message) {
-        errMsg = errorJson.error.message;
-      }
-    } catch {
-      // Ignore
-    }
-    throw new Error(errMsg);
+    response = await send(targetModel);
   }
 
   yield* parseSseStream(
     response,
     (data) => {
-      const parts = data.candidates?.[0]?.content?.parts;
-      if (!Array.isArray(parts) || parts.length === 0) return undefined;
-
-      // Extract real text deltas, skipping any internal thinking blocks
-      const textTokens = parts
+      if (data.error) throw new Error(data.error.message || 'Gemini stream error');
+      const candidate = data.candidates?.[0];
+      if (!candidate) return undefined;
+      const parts: StreamPart[] = [];
+      const text = (candidate.content?.parts || [])
         .filter((p: any) => !p.thought && typeof p.text === 'string')
-        .map((p: any) => p.text);
-
-      if (textTokens.length > 0) {
-        return textTokens.join('');
-      }
-
-      // Fallback
-      return parts[0]?.text;
+        .map((p: any) => p.text)
+        .join('');
+      if (text) parts.push({ type: 'text', text });
+      const reason = mapFinishReason(candidate.finishReason);
+      if (reason) parts.push({ type: 'finish', reason });
+      return parts;
     },
-    signal
+    req.signal
   );
 }
 
 export async function validateGeminiKey(apiKey: string): Promise<boolean> {
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
-    );
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+      headers: { 'x-goog-api-key': apiKey },
+    });
     return res.ok;
   } catch {
     return false;

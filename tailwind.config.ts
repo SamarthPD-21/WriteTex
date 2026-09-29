@@ -6,6 +6,18 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Panel surfaces, darkest to lightest
+        surface: {
+          0: '#0b0b12',
+          1: '#101019',
+          2: '#151522',
+          3: '#1c1c2c',
+          4: '#25253a',
+        },
+        line: {
+          DEFAULT: 'rgba(255, 255, 255, 0.08)',
+          strong: 'rgba(255, 255, 255, 0.14)',
+        },
         bg: {
           primary: '#1e1e2e',
           secondary: '#252537',

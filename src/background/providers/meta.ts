@@ -1,63 +1,28 @@
-import { parseSseStream } from './stream-parser';
+import { streamChatCompletions } from './openai-compatible';
+import { ProviderRequest, StreamPart } from './types';
 
-export async function* streamMeta(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string,
-  temperature = 0.2
-): AsyncGenerator<string> {
-  const url = 'https://api.meta.ai/v1/chat/completions';
-
-  const payload: Record<string, any> = {
-    model,
-    messages: [
-      {
-        role: 'system',
-        content: systemPrompt,
-      },
-      {
-        role: 'user',
-        content: userPrompt,
-      },
-    ],
-    temperature,
-    stream: true,
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+export function streamMeta(req: ProviderRequest): AsyncGenerator<StreamPart> {
+  return streamChatCompletions(
+    'https://api.meta.ai/v1/chat/completions',
+    'Meta',
+    req.apiKey,
+    {
+      model: req.model,
+      messages: [
+        { role: 'system', content: req.systemPrompt },
+        { role: 'user', content: req.userPrompt },
+      ],
+      max_tokens: req.maxOutputTokens,
+      temperature: req.temperature,
     },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    let errMsg = `Meta Model API error: HTTP ${response.status}`;
-    try {
-      const errorJson = await response.json();
-      if (errorJson?.error?.message) {
-        errMsg = errorJson.error.message;
-      }
-    } catch {
-      // Ignore
-    }
-    throw new Error(errMsg);
-  }
-
-  yield* parseSseStream(response, (data) => {
-    return data.choices?.[0]?.delta?.content;
-  });
+    req.signal
+  );
 }
 
 export async function validateMetaKey(apiKey: string): Promise<boolean> {
   try {
     const res = await fetch('https://api.meta.ai/v1/models', {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
     return res.ok;
   } catch {

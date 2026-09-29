@@ -1,7 +1,20 @@
-import { getDocumentProxy, extractText } from 'unpdf';
 import { FileAttachment, FileExtractionResult, SupportedFileType } from './types';
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB limit
+
+type PdfExtractorModule = typeof import('./pdf-worker');
+let pdfExtractor: Promise<PdfExtractorModule> | null = null;
+
+/** Loads the PDF extractor bundle the first time a PDF is attached. */
+function loadPdfExtractor(): Promise<PdfExtractorModule> {
+  if (!pdfExtractor) {
+    pdfExtractor = import(/* @vite-ignore */ chrome.runtime.getURL('pdf-extractor.js')) as Promise<PdfExtractorModule>;
+    pdfExtractor.catch(() => {
+      pdfExtractor = null;
+    });
+  }
+  return pdfExtractor;
+}
 
 /**
  * Formats byte size into a concise human-readable string (e.g. "12.4 KB").
@@ -90,12 +103,10 @@ export async function extractTextFromFile(file: File): Promise<FileExtractionRes
     let pageCount: number | undefined;
 
     if (fileType === 'pdf') {
-      const buffer = await file.arrayBuffer();
-      const pdf = await getDocumentProxy(new Uint8Array(buffer));
-      pageCount = pdf.numPages;
-
-      const result = await extractText(pdf, { mergePages: true });
-      extractedText = cleanExtractedText(typeof result.text === 'string' ? result.text : (result.text as string[]).join('\n'));
+      const { extractPdfText } = await loadPdfExtractor();
+      const result = await extractPdfText(new Uint8Array(await file.arrayBuffer()));
+      pageCount = result.pageCount;
+      extractedText = cleanExtractedText(result.text);
 
       if (!extractedText || extractedText.trim().length === 0) {
         return {

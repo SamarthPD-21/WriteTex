@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { Square, FileText, Activity } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Loader2, Square } from 'lucide-react';
+import { Button } from './ui';
 
 interface StreamingViewProps {
   currentFileName: string;
@@ -8,75 +9,65 @@ interface StreamingViewProps {
   onStop: () => void;
 }
 
-export const StreamingView: React.FC<StreamingViewProps> = ({
-  currentFileName,
-  userPrompt,
-  streamedText,
-  onStop,
-}) => {
+export const StreamingView: React.FC<StreamingViewProps> = ({ currentFileName, userPrompt, streamedText, onStop }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
+  const [elapsed, setElapsed] = useState(0);
 
-  // Auto-scroll as tokens stream in
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Follow the output unless the user scrolled up to read
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   }, [streamedText]);
 
-  const wordCount = streamedText.trim() ? streamedText.trim().split(/\s+/).filter(Boolean).length : 0;
-  const tokenEstimate = Math.round(streamedText.length / 4);
+  const words = streamedText.trim() ? streamedText.trim().split(/\s+/).length : 0;
+  const waiting = streamedText.length === 0;
 
   return (
-    <div className="flex flex-col h-full gap-3 p-4 select-none">
-      {/* Context info */}
-      <div className="flex items-center justify-between text-xs bg-[#13131e] border border-border/80 px-3 py-1.5 rounded-xl">
-        <div className="flex items-center gap-2 truncate">
-          <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
-          <span className="font-mono text-text-primary text-[11px] truncate font-medium">{currentFileName}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-accent animate-ping"></span>
-          <span className="text-[11px] text-accent font-semibold">Streaming LaTeX...</span>
+    <div className="flex flex-col h-full min-h-0 gap-2.5 p-3">
+      <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-surface-2 border border-line">
+        <Loader2 className="w-3.5 h-3.5 mt-0.5 text-indigo-300 animate-spin shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-[11.5px] text-zinc-200 line-clamp-2">{userPrompt}</div>
+          <div className="text-[10.5px] text-zinc-500 font-mono truncate">
+            {currentFileName} · {waiting ? 'waiting for the model' : `${words} words`} · {elapsed}s
+          </div>
         </div>
       </div>
 
-      {/* User prompt preview */}
-      <div className="px-3 py-2 bg-[#12121c] border border-border/60 rounded-xl text-xs text-text-secondary line-clamp-2">
-        <span className="font-semibold text-text-primary">Prompt: </span>
-        {userPrompt}
-      </div>
-
-      {/* Streaming output container */}
       <div
         ref={containerRef}
-        className="flex-1 min-h-[170px] max-h-[320px] overflow-y-auto p-3.5 bg-[#0f0f18] border border-border/90 rounded-xl font-mono text-[11.5px] text-text-primary leading-relaxed whitespace-pre-wrap select-text"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+        }}
+        className="flex-1 min-h-[180px] overflow-y-auto p-3 bg-surface-0 border border-line rounded-xl font-mono text-[11px] text-zinc-300 leading-relaxed whitespace-pre-wrap select-text no-scrollbar"
       >
-        {streamedText}
-        <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-accent animate-cursor"></span>
+        {waiting ? (
+          <div className="flex flex-col gap-2" aria-label="Waiting for response">
+            {[92, 78, 85, 60].map((w, i) => (
+              <div key={i} className="h-2.5 rounded bg-white/[0.05] animate-pulse" style={{ width: `${w}%` }} />
+            ))}
+          </div>
+        ) : (
+          <>
+            {streamedText}
+            <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-indigo-400 animate-cursor" />
+          </>
+        )}
       </div>
 
-      {/* Pulsing progress line */}
-      <div className="relative h-1 w-full overflow-hidden rounded-full bg-[#1b1b2a]">
-        <div className="absolute top-0 bottom-0 w-1/3 bg-gradient-to-r from-accent to-[#a78bfa] rounded-full animate-progress-pulse"></div>
-      </div>
-
-      {/* Live throughput stats & Stop generation button */}
-      <div className="flex items-center justify-between pt-0.5">
-        <div className="flex items-center gap-2 text-[10.5px] font-mono text-text-muted">
-          <Activity className="w-3 h-3 text-accent" />
-          <span>{wordCount} words</span>
-          <span>·</span>
-          <span>~{tokenEstimate} tokens</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={onStop}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-red-200 bg-red-950/60 hover:bg-red-900 border border-red-800/60 transition-all shadow-sm active:scale-95 animate-pulse"
-        >
-          <Square className="w-3 h-3 fill-current" />
-          <span>Stop</span>
-        </button>
+      <div className="flex items-center gap-2 pt-2 border-t border-line">
+        <span className="text-[10.5px] text-zinc-500">You’ll review every change before it’s applied.</span>
+        <Button variant="danger" size="md" className="ml-auto" onClick={onStop} icon={<Square className="w-3 h-3 fill-current" />}>
+          Stop
+        </Button>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.resolve(rootDir, 'dist');
+const isDev = process.argv.includes('--dev');
 
 async function runBuild() {
   console.log('🚀 Building WriteTex Chrome Extension (Manifest V3)...');
@@ -36,7 +37,7 @@ async function runBuild() {
         fileName: () => 'background.js',
       },
       target: 'esnext',
-      minify: false,
+      minify: !isDev,
     },
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),
@@ -62,7 +63,7 @@ async function runBuild() {
         fileName: () => 'bridge.js',
       },
       target: 'esnext',
-      minify: false,
+      minify: !isDev,
     },
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),
@@ -89,14 +90,36 @@ async function runBuild() {
         fileName: () => 'content.js',
       },
       target: 'esnext',
-      minify: false,
+      minify: !isDev,
     },
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),
     },
   });
 
-  // 4. Copy public directory assets (manifest.json, icons)
+  // 4. Build the on-demand PDF extractor (ES module imported by the content script)
+  console.log('📦 Bundling PDF extractor...');
+  await build({
+    configFile: false,
+    build: {
+      outDir: distDir,
+      emptyOutDir: false,
+      lib: {
+        entry: path.resolve(rootDir, 'src/integrations/files/pdf-worker.ts'),
+        formats: ['es'],
+        fileName: () => 'pdf-extractor.js',
+      },
+      // One self-contained file, so it is the only web-accessible resource needed
+      rollupOptions: { output: { inlineDynamicImports: true } },
+      target: 'esnext',
+      minify: !isDev,
+    },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('production'),
+    },
+  });
+
+  // 5. Copy public directory assets (manifest.json, icons)
   console.log('📄 Copying manifest.json and icons...');
   const publicDir = path.resolve(rootDir, 'public');
   if (fs.existsSync(publicDir)) {

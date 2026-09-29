@@ -158,26 +158,26 @@ export const AVAILABLE_MODELS: Record<AIProviderId, ModelInfo[]> = {
   ],
   anthropic: [
     {
-      id: 'claude-3-7-sonnet-20250219',
-      name: 'Claude 3.7 Sonnet',
-      provider: 'anthropic',
-      badge: 'Latest',
-      recommended: true,
-      description: 'Top-tier academic prose quality and hybrid reasoning.',
-    },
-    {
-      id: 'claude-3-5-haiku-20241022',
-      name: 'Claude 3.5 Haiku',
-      provider: 'anthropic',
-      badge: 'Efficient',
-      description: 'Ultra-fast latency for grammar, vocabulary, and conciseness.',
-    },
-    {
-      id: 'claude-3-5-sonnet-20241022',
-      name: 'Claude 3.5 Sonnet',
+      id: 'claude-opus-5',
+      name: 'Claude Opus 5',
       provider: 'anthropic',
       badge: 'Best',
-      description: 'High precision and nuanced academic vocabulary.',
+      recommended: true,
+      description: 'Most capable Claude for nuanced tailoring and long documents.',
+    },
+    {
+      id: 'claude-sonnet-5',
+      name: 'Claude Sonnet 5',
+      provider: 'anthropic',
+      badge: 'Fast',
+      description: 'Near-flagship quality at lower latency and cost.',
+    },
+    {
+      id: 'claude-haiku-4-5',
+      name: 'Claude Haiku 4.5',
+      provider: 'anthropic',
+      badge: 'Efficient',
+      description: 'Fastest and cheapest for quick bullet polish and fixes.',
     },
   ],
 };
@@ -228,7 +228,7 @@ export type RuntimeMessage =
 
 export type StreamEvent =
   | { type: 'chunk'; text: string }
-  | { type: 'done'; fullText: string }
+  | { type: 'done'; fullText: string; finishReason?: 'complete' | 'truncated' | 'refused' | 'unknown' }
   | { type: 'error'; error: string };
 
 // MAIN world CM6 Bridge Messages (via window.postMessage)
@@ -243,6 +243,15 @@ export interface SelectionRange {
   cursor: number;
 }
 
+export interface EditorSnapshot {
+  selection: SelectionRange;
+  line: CurrentLineInfo;
+  docLength: number;
+}
+
+/** Outcome of a guarded write: `stale` means the target text changed since it was read. */
+export type EditOutcome = 'applied' | 'stale' | 'failed';
+
 export interface CurrentLineInfo {
   number: number;
   text: string;
@@ -254,14 +263,16 @@ export type BridgeCommand =
   | { type: 'PING' }
   | { type: 'GET_SELECTION' }
   | { type: 'GET_CONTENT' }
+  | { type: 'GET_SNAPSHOT' }
   | { type: 'GET_CURRENT_LINE' }
   | { type: 'REPLACE_SELECTION'; payload: { replacement: string } }
-  | { type: 'REPLACE_RANGE'; payload: { from: number; to: number; replacement: string } }
+  | { type: 'REPLACE_RANGE'; payload: { from: number; to: number; replacement: string; expected?: string } }
   | { type: 'INSERT_AT_CURSOR'; payload: { text: string } };
 
 export type BridgeResponse =
   | { type: 'PONG'; ready: boolean }
   | { type: 'SELECTION_RESULT'; payload: SelectionRange | null }
   | { type: 'CONTENT_RESULT'; payload: string | null }
+  | { type: 'SNAPSHOT_RESULT'; payload: EditorSnapshot | null }
   | { type: 'CURRENT_LINE_RESULT'; payload: CurrentLineInfo | null }
   | { type: 'MUTATION_RESULT'; success: boolean; error?: string };

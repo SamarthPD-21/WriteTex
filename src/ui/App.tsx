@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { FloatingButton } from './components/FloatingButton';
 import { Panel } from './components/Panel';
-import { ChatInput, HistoryItem } from './components/ChatInput';
+import { ChatInput, GenerateExtras } from './components/ChatInput';
 import { StreamingView } from './components/StreamingView';
 import { DiffView } from './components/DiffView';
 import { EditView } from './components/EditView';
+import { AnswerView } from './components/AnswerView';
 import { SettingsView } from './components/SettingsView';
 import { Toast, ToastMessage, ToastAction } from './components/Toast';
 import { ShortcutsModal } from './components/ShortcutsModal';
@@ -12,675 +14,452 @@ import { TemplateLibraryModal } from './components/TemplateLibraryModal';
 import { useEditor } from './hooks/useEditor';
 import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
+import { useWorkspace, HistoryItem } from './hooks/useWorkspace';
 import { usePanelPosition } from './hooks/usePanelPosition';
 import { usePanelResize } from './hooks/usePanelResize';
-import { locateWrongSnippetInDoc } from '../diff/smart-replace';
-import { validateLatex } from '../latex/validator';
+import { EditPlan, createPlan, invertPlan, planEdit, rebasePlan } from '../diff/edit-plan';
 import { autoRepairLatexDocument } from '../latex/auto-repair';
-import { DiffResult } from '../diff/types';
 import { isExtensionContextValid } from '../messaging/runtime';
-import {
-  AVAILABLE_MODELS,
-  DocumentMode,
-} from '../messaging/types';
-import { OverleafLogEntry } from '../adapters/overleaf/error-scraper';
-import { GitHubAnalysisResult } from '../integrations/github/types';
-import { RefreshCw } from 'lucide-react';
+import { AVAILABLE_MODELS } from '../messaging/types';
 
-export type AppView = 'input' | 'streaming' | 'diff' | 'edit' | 'settings';
+export type AppView = 'input' | 'streaming' | 'review' | 'edit' | 'answer' | 'settings';
 
-interface UndoEntry {
-  id: string;
-  from: number;
-  to: number;
-  previousText: string;
-  replacementText: string;
-  fileName: string;
-  timestamp: number;
-  description: string;
-}
+const MAX_UNDO = 15;
+const DOC_REFRESH_DEBOUNCE_MS = 600;
 
 export const App: React.FC = () => {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [activeView, setActiveView] = useState<AppView>('input');
-  const [lastPrompt, setLastPrompt] = useState<string>('');
-  const [lastMeta, setLastMeta] = useState<{
-    docMode?: DocumentMode;
-    targetCompany?: string;
-    targetRole?: string;
-  } | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState<AppView>('input');
+  const [draft, setDraft] = useState('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [isApplying, setIsApplying] = useState<boolean>(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [isContextInvalidated, setIsContextInvalidated] = useState<boolean>(!isExtensionContextValid());
-  const [fullDocContent, setFullDocContent] = useState<string>('');
+  const [isApplying, setIsApplying] = useState(false);
+  const [isContextInvalidated, setIsContextInvalidated] = useState(!isExtensionContextValid());
+  const [fullDoc, setFullDoc] = useState('');
+  const [undoStack, setUndoStack] = useState<EditPlan[]>([]);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
 
-  // Modals
-  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
-  const [isTemplatesOpen, setIsTemplatesOpen] = useState<boolean>(false);
-
-  // Multi-level undo stack (up to 10 edits)
-  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
-
-  const {
-    isEditorReady,
-    selectedText,
-    currentFileName,
-    selectionRange,
-    currentLine,
-    getFullContent,
-    replaceRange,
-  } = useEditor();
-
-  const {
-    settings,
-    updateSettings,
-    validateKey,
-    isValidating,
-  } = useSettings();
-
-  const {
-    status: aiStatus,
-    streamedText,
-    diffResult,
-    error: aiError,
-    generate,
-    stop,
-    reset,
-    setDiffResult,
-  } = useAI(settings);
-
-  const { position, handleMouseDown } = usePanelPosition();
+  const editor = useEditor();
+  const { settings, updateSettings, validateKey, isValidating } = useSettings();
+  const ai = useAI(settings);
+  const { workspace, update: updateWorkspace, addHistory } = useWorkspace(editor.projectId);
   const { width: panelWidth, handleMouseDownResize } = usePanelResize();
+  const { position, handleMouseDown } = usePanelPosition(panelWidth);
+
+  const { result } = ai;
+  const hasSelection = Boolean(editor.selectionRange && !editor.selectionRange.empty);
 
   const addToast = useCallback((type: ToastMessage['type'], text: string, action?: ToastAction) => {
     const id = `toast_${Date.now()}_${Math.random()}`;
-    setToasts((prev) => [...prev, { id, type, text, action }]);
-
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, action ? 8000 : 4500);
+    setToasts((prev) => [...prev.slice(-1), { id, type, text, action }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), action ? 7000 : 4000);
   }, []);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Fetch full document content when panel opens or selection changes
+  // Keep a copy of the document for keyword analysis; refreshed lazily while open
   useEffect(() => {
-    if (isOpen) {
-      getFullContent().then((content) => {
-        if (content) setFullDocContent(content);
-      });
-    }
-  }, [isOpen, selectedText, getFullContent]);
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      editor.getFullContent().then((content) => content !== null && setFullDoc(content));
+    }, DOC_REFRESH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [isOpen, editor.docLength, editor.currentFileName, editor.getFullContent]);
 
-  // Auto-migrate away from deprecated models on load
+  // Pick resume vs. cover letter from the file name until the user chooses
   useEffect(() => {
-    if (
-      !settings.model ||
-      settings.model === 'gemini-3.1-pro-preview' ||
-      settings.model.startsWith('models/')
-    ) {
-      updateSettings({ model: 'gemini-3.8-flash' });
-    }
-  }, [settings.model, updateSettings]);
+    if (workspace.docModeLocked) return;
+    const lower = editor.currentFileName.toLowerCase();
+    // Cover letter wins for names like "resume_cover_letter.tex"
+    const detected =
+      lower.includes('cover') || lower.includes('letter')
+        ? 'cover_letter'
+        : lower.includes('resume') || lower.includes('cv')
+        ? 'resume'
+        : null;
+    if (detected && detected !== workspace.docMode) updateWorkspace({ docMode: detected });
+  }, [editor.currentFileName, workspace.docModeLocked, workspace.docMode, updateWorkspace]);
 
-  // Record completed responses into history
-  useEffect(() => {
-    if (aiStatus === 'done' && streamedText) {
-      setHistory((prev) => [
-        ...prev,
-        {
-          id: `hist_${Date.now()}`,
-          userPrompt: lastPrompt,
-          docMode: lastMeta?.docMode,
-          targetCompany: lastMeta?.targetCompany,
-          targetRole: lastMeta?.targetRole,
-          response: streamedText,
-          diffResult,
-          timestamp: Date.now(),
-        },
-      ]);
-    }
-  }, [aiStatus, streamedText, lastPrompt, diffResult, lastMeta]);
-
-  // Listen for global shortcut message from service worker
+  // Toolbar button / keyboard command from the service worker
   useEffect(() => {
     const handleMessage = (msg: any) => {
-      if (msg?.type === 'WRITETEX_TOGGLE_PANEL') {
-        setIsOpen((prev) => !prev);
-      }
+      if (msg?.type === 'WRITETEX_TOGGLE_PANEL') setIsOpen((prev) => !prev);
     };
-    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    try {
       chrome.runtime.onMessage.addListener(handleMessage);
+      return () => chrome.runtime.onMessage.removeListener(handleMessage);
+    } catch {
+      return undefined;
     }
-    return () => {
-      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-        chrome.runtime.onMessage.removeListener(handleMessage);
-      }
-    };
   }, []);
 
-  // Handle in-page keyboard shortcuts
+  // React to generation results
+  const recordedResultId = useRef<string | null>(null);
+  useEffect(() => {
+    if (ai.status === 'done' && result) {
+      if (recordedResultId.current !== result.id && result.source === 'model') {
+        recordedResultId.current = result.id;
+        addHistory({
+          prompt: result.prompt,
+          output: result.output,
+          kind: result.kind,
+          docMode: workspace.docMode,
+          fileName: editor.currentFileName,
+        });
+      }
+      setView((current) => (current === 'edit' ? current : result.kind === 'answer' ? 'answer' : 'review'));
+    } else if (ai.status === 'error' && ai.error) {
+      const err = ai.error;
+      if (/Extension (updated|context invalidated)/.test(err)) {
+        setIsContextInvalidated(true);
+      } else if (/api key/i.test(err)) {
+        addToast('error', err, { label: 'Open settings', onClick: () => setView('settings') });
+      } else if (/not found|no longer available/i.test(err) && settings.provider === 'gemini') {
+        addToast('error', err, {
+          label: 'Use Gemini 2.0 Flash',
+          onClick: () => updateSettings({ provider: 'gemini', model: 'gemini-2.0-flash' }),
+        });
+      } else {
+        addToast('error', err);
+      }
+      setView('input');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ai.status, result, ai.error]);
+
+  const handleStop = useCallback(() => {
+    ai.stop();
+    setView('input');
+  }, [ai]);
+
+  const discardResult = useCallback(() => {
+    ai.reset();
+    setView('input');
+  }, [ai]);
+
+  const handleGenerate = async (prompt: string, presetKey?: string, extras?: GenerateExtras) => {
+    const doc = (await editor.getFullContent()) ?? '';
+    setFullDoc(doc);
+    const sel = editor.selectionRange && !editor.selectionRange.empty ? editor.selectionRange : null;
+
+    ai.generate(
+      prompt,
+      {
+        selectedText: sel?.text,
+        currentFileContent: doc || undefined,
+        currentFileName: editor.currentFileName,
+        currentLineNumber: editor.currentLine?.number,
+        currentLineText: editor.currentLine?.text,
+        docMode: workspace.docMode,
+        targetCompany: workspace.targetCompany.trim() || undefined,
+        targetRole: workspace.targetRole.trim() || undefined,
+        jobDescription: workspace.jobDescription.trim() || undefined,
+        githubAnalysis: workspace.githubAnalysis || undefined,
+        attachedFiles: workspace.attachedFiles.length > 0 ? workspace.attachedFiles : undefined,
+        overleafErrors: extras?.overleafErrors,
+        hasNoPdf: extras?.hasNoPdf,
+      },
+      presetKey,
+      {
+        fileName: editor.currentFileName,
+        selection: sel ? { from: sel.from, to: sel.to, text: sel.text } : null,
+        approximateIndex: editor.currentLine?.from,
+      }
+    );
+    setView('streaming');
+  };
+
+  /** Plans existing LaTeX against the live document and opens the review screen. */
+  const reviewOutput = async (label: string, latex: string, makePlan?: (doc: string) => EditPlan | null) => {
+    const doc = (await editor.getFullContent()) ?? '';
+    setFullDoc(doc);
+    const plan = makePlan
+      ? makePlan(doc)
+      : planEdit(doc, latex, { fileName: editor.currentFileName, approximateIndex: editor.currentLine?.from });
+    ai.preview(label, latex, plan);
+    setView('review');
+  };
+
+  /**
+   * Writes a plan into Overleaf. The target is re-found in the live document and
+   * written with compare-and-swap, so concurrent typing is never overwritten.
+   */
+  const applyPlan = async (plan: EditPlan): Promise<{ from: number } | null> => {
+    if (plan.fileName !== editor.currentFileName) {
+      addToast('warning', `This edit is for ${plan.fileName}. Open that file in Overleaf first.`);
+      return null;
+    }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const doc = await editor.getFullContent();
+      if (doc === null) {
+        addToast('error', 'Could not read the document from Overleaf.');
+        return null;
+      }
+      const target = rebasePlan(doc, plan);
+      if (!target) {
+        addToast(
+          'warning',
+          'The text this edit targets has changed since it was generated. Select the text to replace and use “Use selection”, or regenerate.'
+        );
+        return null;
+      }
+      const outcome = await editor.applyEdit(target.from, target.to, plan.newText, doc.slice(target.from, target.to));
+      if (outcome === 'applied') return { from: target.from };
+      if (outcome === 'failed') {
+        addToast('error', 'Overleaf rejected the edit. Try again, or copy the LaTeX manually.');
+        return null;
+      }
+      // 'stale': the document changed between read and write — re-read and retry
+    }
+    addToast('warning', 'The document kept changing while applying. Pause typing and try again.');
+    return null;
+  };
+
+  const handleUndo = async () => {
+    const [latest, ...rest] = undoStack;
+    if (!latest) return;
+    setIsApplying(true);
+    try {
+      if (await applyPlan(latest)) {
+        setUndoStack(rest);
+        // Older "Undo" buttons would now revert a different edit
+        setToasts((prev) => prev.filter((t) => t.action?.label !== 'Undo'));
+        addToast('info', `Reverted: ${latest.description.replace(/^Undo: /, '')}`);
+      }
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleApply = async () => {
+    const plan = result?.plan;
+    if (!plan) return;
+    setIsApplying(true);
+    try {
+      const applied = await applyPlan(plan);
+      if (!applied) return;
+      setUndoStack((prev) => [invertPlan(plan, applied.from), ...prev].slice(0, MAX_UNDO));
+      addToast('success', `${plan.description} · ${plan.fileName}`, { label: 'Undo', onClick: () => handleUndoRef.current() });
+      ai.reset();
+      setView('input');
+      if (settings.autoCollapseOnApply) setIsOpen(false);
+    } catch (err: unknown) {
+      addToast('error', `Could not apply: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  // Toast actions outlive renders; always call the latest undo
+  const handleUndoRef = useRef(handleUndo);
+  handleUndoRef.current = handleUndo;
+
+  const handleRelocate = async () => {
+    if (!result || !editor.selectionRange || editor.selectionRange.empty) return;
+    const doc = (await editor.getFullContent()) ?? '';
+    const sel = editor.selectionRange;
+    ai.updatePlan(
+      planEdit(doc, result.output, {
+        fileName: editor.currentFileName,
+        selection: { from: sel.from, to: sel.to, text: sel.text },
+      })
+    );
+  };
+
+  const handleEditSave = async (text: string) => {
+    const plan = result?.plan;
+    if (plan) {
+      ai.updatePlan({ ...plan, newText: text });
+    } else {
+      const doc = (await editor.getFullContent()) ?? '';
+      ai.updatePlan(planEdit(doc, text, { fileName: editor.currentFileName, approximateIndex: editor.currentLine?.from }));
+    }
+    setView('review');
+  };
+
+  const handleAutoRepair = async () => {
+    const doc = (await editor.getFullContent()) ?? '';
+    setFullDoc(doc);
+    const repair = autoRepairLatexDocument(doc);
+    if (!repair.wasRepaired) {
+      addToast('info', 'No broken macros or missing preamble found in this file.');
+      return;
+    }
+    const plan = createPlan(doc, 0, doc.length, repair.repairedDoc, 'full_document', 1, editor.currentFileName);
+    const fixes = repair.repairsMade.slice(0, 2).join('; ') + (repair.repairsMade.length > 2 ? '…' : '');
+    ai.preview('Quick repair', repair.repairedDoc, { ...plan, description: `Repairs: ${fixes}` });
+    setView('review');
+  };
+
+  const handleInsertTemplate = (latex: string) => {
+    setIsTemplatesOpen(false);
+    reviewOutput('Template', latex, (doc) => {
+      const sel = editor.selectionRange && !editor.selectionRange.empty ? editor.selectionRange : null;
+      if (sel) return createPlan(doc, sel.from, sel.to, latex, 'selection', 1, editor.currentFileName);
+      const plan = createPlan(doc, 0, doc.length, latex, 'full_document', 1, editor.currentFileName);
+      return doc.trim() ? { ...plan, description: 'Replaces the whole file with the template' } : { ...plan, description: 'Inserts the template' };
+    });
+  };
+
+  const handleReviewHistory = (item: HistoryItem) => reviewOutput(item.prompt, item.output);
+
+  // Global keys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'w') {
         e.preventDefault();
         setIsOpen((prev) => !prev);
-      } else if (e.key === 'Escape') {
-        if (isShortcutsOpen) {
-          setIsShortcutsOpen(false);
-        } else if (isTemplatesOpen) {
-          setIsTemplatesOpen(false);
-        } else if (isOpen) {
-          if (activeView === 'settings') {
-            setActiveView('input');
-          } else if (activeView === 'edit') {
-            setActiveView('diff');
-          } else if (activeView === 'streaming') {
-            handleStop();
-          } else {
-            setIsOpen(false);
-          }
-        }
-      } else if (e.key === '?' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName) && isOpen) {
+        return;
+      }
+      if (!isOpen) return;
+      // Escape and "?" belong to the Overleaf editor unless focus is inside the panel
+      const path = e.composedPath();
+      const inPanel = path.some((node) => (node as Element).id === 'writetex-extension-root');
+      if (!inPanel) return;
+      if (e.key === 'Escape') {
+        if (isShortcutsOpen) setIsShortcutsOpen(false);
+        else if (isTemplatesOpen) setIsTemplatesOpen(false);
+        else if (view === 'settings') setView('input');
+        else if (view === 'edit') setView('review');
+        else if (view === 'streaming') handleStop();
+        else if (view === 'review' || view === 'answer') discardResult();
+        else setIsOpen(false);
+      } else if (e.key === '?' && !['INPUT', 'TEXTAREA'].includes((e.composedPath()[0] as HTMLElement)?.tagName)) {
         e.preventDefault();
         setIsShortcutsOpen((prev) => !prev);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, activeView, isShortcutsOpen, isTemplatesOpen]);
-
-  // Sync AI state with active view & handle smart error recovery
-  useEffect(() => {
-    if (aiStatus === 'streaming') {
-      setActiveView('streaming');
-    } else if (aiStatus === 'done') {
-      if (diffResult && diffResult.hasChanges) {
-        setActiveView('diff');
-      } else {
-        setActiveView('input');
-      }
-    } else if (aiStatus === 'idle') {
-      if (activeView === 'streaming') {
-        setActiveView('input');
-      }
-    } else if (aiStatus === 'error') {
-      if (aiError) {
-        if (
-          aiError.includes('Extension updated') ||
-          aiError.includes('Extension context invalidated')
-        ) {
-          setIsContextInvalidated(true);
-          addToast(
-            'warning',
-            'Extension updated in Chrome. Please refresh this tab (Ctrl+R / F5) to reconnect.',
-            {
-              label: '🔄 Refresh Tab',
-              onClick: () => window.location.reload(),
-            }
-          );
-        } else if (
-          aiError.includes('gemini-2.5-pro') ||
-          aiError.includes('gemini-3.1-pro-preview') ||
-          aiError.includes('not found') ||
-          aiError.includes('no longer available')
-        ) {
-          addToast('error', aiError, {
-            label: 'Switch to Gemini 2.0 Flash (Fastest · Sub-second)',
-            onClick: () => {
-              updateSettings({ provider: 'gemini', model: 'gemini-2.0-flash' });
-            },
-          });
-        } else if (aiError.toLowerCase().includes('api key')) {
-          addToast('error', aiError, {
-            label: 'Open Settings',
-            onClick: () => setActiveView('settings'),
-          });
-        } else {
-          addToast('error', aiError);
-        }
-      }
-      setActiveView('input');
-    }
-  }, [aiStatus, diffResult, aiError, addToast, updateSettings]);
-
-  const handleStop = () => {
-    stop();
-    setActiveView('input');
-    addToast('info', 'Generation stopped.');
-  };
-
-  const [pendingEdit, setPendingEdit] = useState<{
-    from: number;
-    to: number;
-    text: string;
-    fileName: string;
-    docSnapshot?: string;
-  } | null>(null);
-
-  const pushUndo = (entry: UndoEntry) => {
-    setUndoStack((prev) => [entry, ...prev].slice(0, 10));
-  };
-
-  const handleUndo = async () => {
-    if (undoStack.length === 0) return;
-    const [latest, ...rest] = undoStack;
-
-    try {
-      const ok = await replaceRange(latest.from, latest.to, latest.previousText);
-      if (ok) {
-        setUndoStack(rest);
-        addToast('info', `↩ Undid: ${latest.description}`);
-      } else {
-        addToast('error', 'Could not revert automatically; please use Ctrl+Z in Overleaf.');
-      }
-    } catch {
-      addToast('error', 'Revert failed; use Ctrl+Z in Overleaf.');
-    }
-  };
-
-  const handleGenerate = async (
-    prompt: string,
-    presetKey?: string,
-    meta?: {
-      docMode?: DocumentMode;
-      targetCompany?: string;
-      targetRole?: string;
-      jobDescription?: string;
-      githubAnalysis?: GitHubAnalysisResult;
-      overleafErrors?: OverleafLogEntry[];
-      hasNoPdf?: boolean;
-      attachedFiles?: import('../integrations/files/types').FileAttachment[];
-    }
-  ) => {
-    setLastPrompt(prompt);
-    setLastMeta(
-      meta
-        ? {
-            docMode: meta.docMode,
-            targetCompany: meta.targetCompany,
-            targetRole: meta.targetRole,
-          }
-        : null
-    );
-
-    const fullDoc = await getFullContent();
-    if (fullDoc) setFullDocContent(fullDoc);
-
-    // Snapshot the exact target selection and document buffer at generation trigger time
-    if (selectionRange && !selectionRange.empty) {
-      setPendingEdit({
-        from: selectionRange.from,
-        to: selectionRange.to,
-        text: selectedText || selectionRange.text,
-        fileName: currentFileName,
-        docSnapshot: fullDoc || undefined,
-      });
-    } else if (selectedText && selectedText.trim().length > 0) {
-      setPendingEdit({
-        from: currentLine?.from ?? 0,
-        to: (currentLine?.from ?? 0) + selectedText.length,
-        text: selectedText,
-        fileName: currentFileName,
-        docSnapshot: fullDoc || undefined,
-      });
-    } else {
-      setPendingEdit(null);
-    }
-
-    generate(
-      prompt,
-      {
-        selectedText: selectedText || undefined,
-        currentFileContent: fullDoc || undefined,
-        currentFileName,
-        currentLineNumber: currentLine?.number,
-        currentLineText: currentLine?.text,
-        docMode: meta?.docMode,
-        targetCompany: meta?.targetCompany,
-        targetRole: meta?.targetRole,
-        jobDescription: meta?.jobDescription,
-        githubAnalysis: meta?.githubAnalysis,
-        overleafErrors: meta?.overleafErrors,
-        hasNoPdf: meta?.hasNoPdf,
-        attachedFiles: meta?.attachedFiles,
-      },
-      presetKey
-    );
-  };
-
-  /**
-   * TRANSACTIONAL APPLICATION OF EDITS DIRECTLY INTO OVERLEAF
-   * Strictly selection-locked: NEVER corrupts or modifies unrelated document code.
-   */
-  const handleApplyChanges = async (
-    overrideReplacement?: string,
-    targetOriginal?: string
-  ) => {
-    const replacement = overrideReplacement || diffResult?.replacement;
-    if (!replacement) return;
-
-    setIsApplying(true);
-
-    try {
-      const fullDoc = await getFullContent();
-      if (!fullDoc) {
-        addToast('error', 'Could not access document content in Overleaf.');
-        return;
-      }
-      setFullDocContent(fullDoc);
-
-      // Guard: Check basic LaTeX syntax before applying
-      const syntaxCheck = validateLatex(replacement);
-      if (!syntaxCheck.valid && syntaxCheck.errors.length > 0) {
-        addToast('warning', `Notice: ${syntaxCheck.errors[0]}`);
-      }
-
-      let applied = false;
-      let previousOriginalText = '';
-      let appliedFrom = -1;
-      let appliedTo = -1;
-      let appliedActionDesc = 'Replaced snippet';
-
-      // Priority 1: Exact coordinates captured when generation was triggered
-      if (pendingEdit && fullDoc && pendingEdit.fileName === currentFileName) {
-        const slice = fullDoc.slice(pendingEdit.from, pendingEdit.to);
-        if (slice === pendingEdit.text) {
-          applied = await replaceRange(pendingEdit.from, pendingEdit.to, replacement);
-          if (applied) {
-            appliedFrom = pendingEdit.from;
-            appliedTo = pendingEdit.from + replacement.length;
-            previousOriginalText = pendingEdit.text;
-            appliedActionDesc = 'Replaced selected snippet';
-          }
-        }
-      }
-
-      // Priority 2: Intelligent Smart Replacement locator (locates the exact wrong snippet in fullDoc)
-      if (!applied) {
-        const loc = locateWrongSnippetInDoc(fullDoc, replacement, {
-          originalSnippet: targetOriginal || diffResult?.original || pendingEdit?.text || selectedText,
-          approximateIndex: pendingEdit?.from ?? currentLine?.from,
-          activeSelection: selectionRange && !selectionRange.empty ? selectionRange : undefined,
-          originalDocSnapshot: pendingEdit?.docSnapshot || fullDocContent || undefined,
-        });
-
-        if (loc) {
-          applied = await replaceRange(loc.from, loc.to, replacement);
-          if (applied) {
-            appliedFrom = loc.from;
-            appliedTo = loc.from + replacement.length;
-            previousOriginalText = loc.matchedText;
-            appliedActionDesc =
-              loc.reason === 'section_match'
-                ? 'Replaced matching section'
-                : loc.reason === 'section_similarity_match'
-                ? 'Replaced matching section'
-                : loc.reason === 'section_body_match'
-                ? 'Replaced section projects'
-                : loc.reason === 'section_insert_slot'
-                ? 'Inserted section in standard order'
-                : loc.reason === 'stale_coords_recovered'
-                ? 'Replaced snippet (recovered position)'
-                : loc.reason === 'content_anchor'
-                ? 'Replaced matching code block'
-                : loc.reason === 'preamble'
-                ? 'Restored complete preamble'
-                : loc.reason === 'full_document'
-                ? 'Repaired full document'
-                : loc.reason === 'bullet_match'
-                ? 'Replaced matching bullets'
-                : 'Replaced selected snippet';
-          }
-        }
-      }
-
-      if (applied) {
-        if (appliedFrom !== -1 && previousOriginalText !== undefined) {
-          pushUndo({
-            id: `undo_${Date.now()}`,
-            from: appliedFrom,
-            to: appliedTo,
-            previousText: previousOriginalText,
-            replacementText: replacement,
-            fileName: currentFileName,
-            timestamp: Date.now(),
-            description: appliedActionDesc,
-          });
-        }
-
-        addToast('success', `✓ ${appliedActionDesc} in ${currentFileName}`, {
-          label: '↩ Undo',
-          onClick: () => handleUndo(),
-        });
-
-        reset();
-        setActiveView('input');
-        setPendingEdit(null);
-
-        if (settings.autoCollapseOnApply) {
-          setIsOpen(false);
-        }
-      } else {
-        addToast(
-          'warning',
-          'Could not automatically detect the matching snippet to replace. Please highlight the wrong code in Overleaf and click Apply.'
-        );
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      addToast('error', `Error applying replacement: ${msg}`);
-    } finally {
-      setIsApplying(false);
-    }
-  };
-
-  const handleAutoRepairDocument = async () => {
-    setIsApplying(true);
-    try {
-      const fullDoc = await getFullContent();
-      if (!fullDoc) {
-        addToast('error', 'Could not access document content in Overleaf.');
-        return;
-      }
-      setFullDocContent(fullDoc);
-
-      const repairResult = autoRepairLatexDocument(fullDoc);
-      if (!repairResult.wasRepaired) {
-        addToast('info', 'No corrupted macros or missing preamble detected in this document.');
-        return;
-      }
-
-      const ok = await replaceRange(0, fullDoc.length, repairResult.repairedDoc);
-      if (ok) {
-        pushUndo({
-          id: `undo_${Date.now()}`,
-          from: 0,
-          to: repairResult.repairedDoc.length,
-          previousText: fullDoc,
-          replacementText: repairResult.repairedDoc,
-          fileName: currentFileName,
-          timestamp: Date.now(),
-          description: 'Repaired LaTeX macros & preamble',
-        });
-
-        const fixesSummary = repairResult.repairsMade.slice(0, 3).join(', ');
-        addToast('success', `✓ Repaired LaTeX document (${fixesSummary})`, {
-          label: '↩ Undo',
-          onClick: () => handleUndo(),
-        });
-      } else {
-        addToast('error', 'Failed to update document in Overleaf.');
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      addToast('error', `Repair failed: ${msg}`);
-    } finally {
-      setIsApplying(false);
-    }
-  };
-
-  const handleInsertTemplate = async (templateLatex: string) => {
-    try {
-      const fullDoc = await getFullContent();
-      const targetFrom = selectionRange && !selectionRange.empty ? selectionRange.from : 0;
-      const targetTo = selectionRange && !selectionRange.empty ? selectionRange.to : (fullDoc?.length ?? 0);
-      const prev = fullDoc ? fullDoc.slice(targetFrom, targetTo) : '';
-
-      const ok = await replaceRange(targetFrom, targetTo, templateLatex);
-      if (ok) {
-        pushUndo({
-          id: `undo_${Date.now()}`,
-          from: targetFrom,
-          to: targetFrom + templateLatex.length,
-          previousText: prev,
-          replacementText: templateLatex,
-          fileName: currentFileName,
-          timestamp: Date.now(),
-          description: 'Inserted LaTeX template',
-        });
-
-        addToast('success', `✓ Inserted template into ${currentFileName}`, {
-          label: '↩ Undo',
-          onClick: () => handleUndo(),
-        });
-      } else {
-        addToast('error', 'Failed to insert template into Overleaf.');
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      addToast('error', `Template insertion failed: ${msg}`);
-    }
-  };
+  }, [isOpen, view, isShortcutsOpen, isTemplatesOpen, handleStop, discardResult]);
 
   return (
     <div className="writetex-root-container">
-      {/* 1. Subtle Floating Pill (FAB) */}
-      <FloatingButton
-        isOpen={isOpen}
-        hasSelection={Boolean(selectedText && selectedText.trim().length > 0)}
-        onClick={() => setIsOpen(true)}
-      />
+      <FloatingButton isOpen={isOpen} hasSelection={hasSelection} onClick={() => setIsOpen(true)} />
 
-      {/* 2. Floating AI Assistant Panel */}
       <Panel
         isOpen={isOpen}
         position={position}
         width={panelWidth}
         onMouseDownHeader={handleMouseDown}
         onMouseDownResize={handleMouseDownResize}
-        isSettingsOpen={activeView === 'settings'}
-        onToggleSettings={() => setActiveView(activeView === 'settings' ? 'input' : 'settings')}
+        isSettingsOpen={view === 'settings'}
+        onToggleSettings={() => setView(view === 'settings' ? 'input' : 'settings')}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         undoCount={undoStack.length}
-        onUndo={handleUndo}
+        onUndo={isApplying ? undefined : handleUndo}
         onMinimize={() => setIsOpen(false)}
         onClose={() => setIsOpen(false)}
-        isEditorConnected={isEditorReady}
+        isEditorConnected={editor.isEditorReady}
       >
         <Toast toasts={toasts} onDismiss={dismissToast} />
 
         {isContextInvalidated && (
-          <div className="flex items-center justify-between p-2.5 mx-3 mt-2 rounded-xl bg-amber-950/80 border border-amber-600/50 text-amber-200 text-xs shadow-md animate-panel-in">
-            <div className="flex items-center gap-2">
-              <RefreshCw className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-spin" />
-              <span className="font-medium leading-tight">Extension reloaded. Refresh tab to reconnect.</span>
-            </div>
+          <div className="flex items-center gap-2 p-2.5 mx-3 mt-2 rounded-xl bg-amber-950/80 border border-amber-600/50 text-amber-100 text-xs">
+            <RefreshCw className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span className="flex-1">WriteTex was updated. Refresh this tab to reconnect.</span>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-semibold transition-colors shrink-0 active:scale-95"
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-semibold"
             >
               Refresh
             </button>
           </div>
         )}
 
-        {activeView === 'input' && (
+        {view === 'input' && (
           <ChatInput
-            selectedText={selectedText}
-            currentFileName={currentFileName}
-            currentFileContent={fullDocContent}
+            workspace={workspace}
+            onUpdateWorkspace={updateWorkspace}
+            prompt={draft}
+            onPromptChange={setDraft}
+            selectedText={editor.selectedText}
+            currentFileName={editor.currentFileName}
+            currentFileContent={fullDoc}
             settings={settings}
             onUpdateModel={(provider, model) => {
               updateSettings({ provider, model });
               const info = AVAILABLE_MODELS[provider]?.find((m) => m.id === model);
-              addToast('info', `Switched to ${info?.name || model}`);
+              addToast('info', `Using ${info?.name || model}`);
             }}
             onGenerate={handleGenerate}
-            isGenerating={aiStatus === 'streaming'}
+            isGenerating={ai.status === 'streaming'}
             onStop={handleStop}
-            onOpenSettings={() => setActiveView('settings')}
-            history={history}
-            onViewDiff={(diff: DiffResult) => {
-              setDiffResult(diff);
-              setActiveView('diff');
+            onOpenSettings={() => setView('settings')}
+            onReviewHistory={handleReviewHistory}
+            onPreview={(label, latex) => reviewOutput(label, latex)}
+            onAutoRepair={handleAutoRepair}
+            onRefreshDocument={async () => {
+              const content = await editor.getFullContent();
+              if (content !== null) setFullDoc(content);
             }}
-            onApplyDirect={(text: string, original?: string) => handleApplyChanges(text, original)}
-            onAutoRepair={handleAutoRepairDocument}
-            onClearHistory={() => setHistory([])}
-            onOpenTemplates={() => setIsTemplatesOpen(true)}
           />
         )}
 
-        {activeView === 'streaming' && (
+        {view === 'streaming' && (
           <StreamingView
-            currentFileName={currentFileName}
-            userPrompt={lastPrompt}
-            streamedText={streamedText}
+            currentFileName={editor.currentFileName}
+            userPrompt={ai.lastPrompt}
+            streamedText={ai.streamedText}
             onStop={handleStop}
           />
         )}
 
-        {activeView === 'diff' && diffResult && (
+        {view === 'review' && result && (
           <DiffView
-            fileName={currentFileName}
-            diffResult={diffResult}
-            onApply={() => handleApplyChanges()}
-            onReject={() => {
-              reset();
-              setActiveView('input');
-            }}
-            onEdit={() => setActiveView('edit')}
+            fileName={result.plan?.fileName || editor.currentFileName}
+            output={result.output}
+            plan={result.plan}
+            finishReason={result.finishReason}
+            onApply={handleApply}
+            onReject={discardResult}
+            onEdit={() => setView('edit')}
+            onRelocate={handleRelocate}
+            hasSelection={hasSelection}
             isApplying={isApplying}
           />
         )}
 
-        {activeView === 'edit' && diffResult && (
+        {view === 'edit' && result && (
           <EditView
-            initialText={diffResult.replacement}
-            onSaveAndApply={(edited) => handleApplyChanges(edited)}
-            onCancel={() => setActiveView('diff')}
+            initialText={result.plan?.newText ?? result.output}
+            onSaveAndApply={handleEditSave}
+            onCancel={() => setView('review')}
           />
         )}
 
-        {activeView === 'settings' && (
+        {view === 'answer' && result && (
+          <AnswerView
+            prompt={result.prompt}
+            answer={result.output}
+            onBack={discardResult}
+            onFollowUp={() => {
+              ai.reset();
+              setView('input');
+            }}
+          />
+        )}
+
+        {view === 'settings' && (
           <SettingsView
             settings={settings}
             onUpdateSettings={updateSettings}
             onValidateKey={validateKey}
             isValidating={isValidating}
-            onBack={() => setActiveView('input')}
+            onBack={() => setView('input')}
           />
         )}
 
-        {/* Shortcuts Cheat Sheet Modal */}
-        <ShortcutsModal
-          isOpen={isShortcutsOpen}
-          onClose={() => setIsShortcutsOpen(false)}
-        />
-
-        {/* LaTeX Template Library Modal */}
+        <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
         <TemplateLibraryModal
           isOpen={isTemplatesOpen}
           onClose={() => setIsTemplatesOpen(false)}
           onInsertTemplate={handleInsertTemplate}
-          defaultCategory={lastMeta?.docMode}
+          defaultCategory={workspace.docMode}
         />
       </Panel>
     </div>

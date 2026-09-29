@@ -114,7 +114,7 @@ export async function validateKeyViaBackground(
 export function streamGenerationFromBackground(
   request: GenerateRequest,
   onChunk: (chunk: string) => void,
-  onDone: (fullText: string) => void,
+  onDone: (fullText: string, finishReason?: 'complete' | 'truncated' | 'refused' | 'unknown') => void,
   onError: (error: string) => void
 ): () => void {
   if (!isExtensionContextValid()) {
@@ -123,6 +123,8 @@ export function streamGenerationFromBackground(
   }
 
   let port: chrome.runtime.Port | null = null;
+  let settled = false;
+  let cancelled = false;
 
   try {
     port = chrome.runtime.connect({ name: 'WRITETEX_STREAM' });
@@ -137,13 +139,15 @@ export function streamGenerationFromBackground(
     if (event.type === 'chunk') {
       onChunk(event.text);
     } else if (event.type === 'done') {
-      onDone(event.fullText);
+      settled = true;
+      onDone(event.fullText, event.finishReason);
       try {
         port?.disconnect();
       } catch {
         // Ignore
       }
     } else if (event.type === 'error') {
+      settled = true;
       onError(event.error);
       try {
         port?.disconnect();
@@ -154,6 +158,8 @@ export function streamGenerationFromBackground(
   });
 
   port.onDisconnect.addListener(() => {
+    if (settled || cancelled) return;
+    settled = true;
     if (chrome.runtime.lastError) {
       const msg = chrome.runtime.lastError.message || '';
       if (msg.includes('Extension context invalidated')) {
@@ -161,6 +167,9 @@ export function streamGenerationFromBackground(
       } else {
         onError(msg || 'Port disconnected');
       }
+    } else {
+      // The service worker went away mid-stream (e.g. Chrome restarted it)
+      onError('Connection to the WriteTex background worker was lost. Please try again.');
     }
   });
 
@@ -174,6 +183,7 @@ export function streamGenerationFromBackground(
   }
 
   return () => {
+    cancelled = true;
     try {
       if (port) {
         port.postMessage({ type: 'CANCEL', requestId: request.requestId });

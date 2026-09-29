@@ -1,5 +1,5 @@
 import { EditorAdapter } from '../types';
-import { CurrentLineInfo, SelectionRange } from '../../messaging/types';
+import { CurrentLineInfo, EditOutcome, EditorSnapshot, SelectionRange } from '../../messaging/types';
 import { bridgeClient } from '../../content/bridge-client';
 import { extractActiveFileName, OVERLEAF_SELECTORS } from './dom-selectors';
 
@@ -37,6 +37,19 @@ export class OverleafAdapter implements EditorAdapter {
     return extractActiveFileName();
   }
 
+  public async getSnapshot(): Promise<EditorSnapshot | null> {
+    return bridgeClient.getSnapshot();
+  }
+
+  public async applyEdit(from: number, to: number, replacement: string, expected: string): Promise<EditOutcome> {
+    return bridgeClient.applyEdit(from, to, replacement, expected);
+  }
+
+  /** Current Overleaf project id, used to keep per-project workspace state. */
+  public getProjectId(): string {
+    return window.location.pathname.match(/\/(?:project|read)\/([^/?#]+)/)?.[1] || 'default';
+  }
+
   public async getCurrentLine(): Promise<CurrentLineInfo | null> {
     return bridgeClient.getCurrentLine();
   }
@@ -53,23 +66,44 @@ export class OverleafAdapter implements EditorAdapter {
     return bridgeClient.insertAtCursor(text);
   }
 
-  public onSelectionChange(callback: (selectedText: string) => void): () => void {
+  /**
+   * Calls back with a fresh editor snapshot whenever the selection settles.
+   * One bridge round-trip per change (selection, cursor line, and doc length together).
+   */
+  public onSnapshotChange(callback: (snapshot: EditorSnapshot | null) => void): () => void {
     let debounceTimer: ReturnType<typeof setTimeout>;
 
-    const handler = () => {
+    const handler = (event?: Event) => {
+      // Typing in the WriteTex panel itself is not an editor selection change
+      const path = event?.composedPath?.() || [];
+      if (path.some((node) => (node as Element).id === 'writetex-extension-root')) return;
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
-        const text = await this.getSelectedText();
-        callback(text || '');
+        try {
+          callback(await this.getSnapshot());
+        } catch {
+          // Bridge not ready yet
+        }
       }, 120);
     };
 
     document.addEventListener('selectionchange', handler);
+    // CM6 keyboard navigation does not always fire selectionchange
+    document.addEventListener('keyup', handler, true);
+    document.addEventListener('mouseup', handler, true);
 
     return () => {
       clearTimeout(debounceTimer);
       document.removeEventListener('selectionchange', handler);
+      document.removeEventListener('keyup', handler, true);
+      document.removeEventListener('mouseup', handler, true);
     };
+  }
+
+  public onSelectionChange(callback: (selectedText: string) => void): () => void {
+    return this.onSnapshotChange((snapshot) => {
+      callback(snapshot && !snapshot.selection.empty ? snapshot.selection.text : '');
+    });
   }
 }
 

@@ -24,6 +24,22 @@ export const OVERLEAF_SELECTORS = {
  * Extracts current active file name from Overleaf file tree or header tabs
  */
 export function extractActiveFileName(): string | null {
+  const clean = (text: string | null | undefined) =>
+    (text || '').replace(/[\u200e\u200f\u202a-\u202e]/g, '').trim();
+
+  // Current Overleaf: the selected file-tree item carries the file name in aria-label
+  const treeItem = document.querySelector('li[role="treeitem"][aria-selected="true"]');
+  const treeName = clean(treeItem?.getAttribute('aria-label'));
+  if (/\.[A-Za-z0-9]+$/.test(treeName)) return treeName;
+
+  // The active editor tab, without its icon ligatures ("description", "close")
+  for (const tab of Array.from(document.querySelectorAll('[role="tab"][aria-selected="true"]'))) {
+    const clone = tab.cloneNode(true) as Element;
+    clone.querySelectorAll('.material-symbols, [class*="material-symbols"], button').forEach((n) => n.remove());
+    const name = clean(clone.textContent);
+    if (/^[^\s/]+\.[A-Za-z0-9]+$/.test(name)) return name;
+  }
+
   // Try 1: Selected file item in left sidebar tree
   const activeTreeItem = document.querySelector(OVERLEAF_SELECTORS.activeFile);
   if (activeTreeItem && activeTreeItem.textContent) {

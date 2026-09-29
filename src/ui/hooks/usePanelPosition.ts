@@ -7,11 +7,15 @@ export interface Position {
 
 const STORAGE_KEY = 'writetex_panel_pos';
 
-export function usePanelPosition(panelWidth = 380, panelHeight = 520) {
+// Matches the panel's CSS height: min(660px, 100vh - 24px)
+const panelHeight = () => Math.min(660, window.innerHeight - 24);
+const clampY = (y: number) => Math.max(12, Math.min(y, window.innerHeight - panelHeight() - 12));
+
+export function usePanelPosition(panelWidth = 380) {
   // Initialize to bottom-right corner
   const [position, setPosition] = useState<Position>(() => {
     const defaultX = Math.max(20, window.innerWidth - panelWidth - 24);
-    const defaultY = Math.max(20, window.innerHeight - panelHeight - 24);
+    const defaultY = clampY(window.innerHeight - panelHeight() - 24);
 
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -19,7 +23,7 @@ export function usePanelPosition(panelWidth = 380, panelHeight = 520) {
         const parsed = JSON.parse(saved);
         return {
           x: Math.min(Math.max(10, parsed.x), window.innerWidth - panelWidth - 10),
-          y: Math.min(Math.max(10, parsed.y), window.innerHeight - panelHeight - 10),
+          y: clampY(parsed.y),
         };
       }
     } catch {
@@ -56,10 +60,7 @@ export function usePanelPosition(panelWidth = 380, panelHeight = 520) {
         Math.max(10, e.clientX - dragOffsetRef.current.x),
         window.innerWidth - panelWidth - 10
       );
-      const newY = Math.min(
-        Math.max(10, e.clientY - dragOffsetRef.current.y),
-        window.innerHeight - 80
-      );
+      const newY = clampY(e.clientY - dragOffsetRef.current.y);
 
       setPosition({ x: newX, y: newY });
     };
@@ -83,6 +84,17 @@ export function usePanelPosition(panelWidth = 380, panelHeight = 520) {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [position, panelWidth]);
+
+  // Keep the panel on screen when the window shrinks
+  useEffect(() => {
+    const handleResize = () =>
+      setPosition((prev) => ({
+        x: Math.max(10, Math.min(prev.x, window.innerWidth - panelWidth - 10)),
+        y: clampY(prev.y),
+      }));
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [panelWidth]);
 
   return {
     position,

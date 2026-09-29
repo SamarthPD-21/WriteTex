@@ -1,6 +1,10 @@
 import { EditorContext, DocumentMode } from '../messaging/types';
 import { buildLatexContext } from '../latex/context-builder';
 import { getSystemPrompt } from './system';
+import { analyzeKeywordGap } from '../analysis/keyword-gap';
+import { isExplanationQuery } from './intent';
+
+export { isExplanationQuery };
 
 export interface BuiltPrompt {
   systemPrompt: string;
@@ -56,9 +60,7 @@ export function buildPrompt(
     context.currentFileName
   );
 
-  const isExplanationOnly =
-    presetKey === 'explain' ||
-    /^(explain|what does|how does|why|describe)/i.test(userQuery.trim());
+  const isExplanationOnly = isExplanationQuery(userQuery, presetKey);
 
   let contextDescription = '';
   if (latexContext.fileName) {
@@ -95,6 +97,25 @@ export function buildPrompt(
 
   if (context.jobDescription && context.jobDescription.trim().length > 0) {
     targetHeader += `[JOB DESCRIPTION / KEY REQUIREMENTS]\n${context.jobDescription.trim()}\n\n`;
+  }
+
+  // Tell the model which JD keywords the resume lacks, so tailoring is targeted instead of generic
+  if (
+    effectiveDocMode === 'resume' &&
+    context.jobDescription &&
+    context.jobDescription.trim().length > 0 &&
+    context.currentFileContent
+  ) {
+    const gap = analyzeKeywordGap(context.jobDescription, context.currentFileContent);
+    if (gap.totalJdKeywords > 0) {
+      targetHeader += `[KEYWORD GAP ANALYSIS]\n`;
+      targetHeader += `Resume already covers ${gap.matchedKeywords.length}/${gap.totalJdKeywords} job keywords.\n`;
+      if (gap.missingKeywords.length > 0) {
+        targetHeader += `Missing from resume (most important first): ${gap.missingKeywords.slice(0, 12).join(', ')}\n`;
+        targetHeader += `Only work a missing keyword in where the candidate's existing experience, projects, or attached documents genuinely support it. Never add a skill the candidate has not demonstrated.\n`;
+      }
+      targetHeader += '\n';
+    }
   }
 
   // GitHub analyzed projects context
@@ -140,7 +161,9 @@ export function buildPrompt(
     Boolean(context.hasNoPdf) ||
     Boolean(context.overleafErrors && context.overleafErrors.length > 0) ||
     /^(fix|repair|debug|solve|compile|no pdf)\b/i.test(userQuery.trim()) ||
-    /error|emergency stop|undefined control sequence|runaway argument|no legal \\end/i.test(userQuery);
+    /\b(?:latex|compil\w*|overleaf|build|syntax)\s+(?:errors?|failures?|issues?)\b|\b(?:fix|resolve|repair)\b[^.]*\berrors?\b|emergency stop|undefined control sequence|runaway argument|no legal \\end|missing \$ inserted|no pdf/i.test(
+      userQuery
+    );
 
   let errorSection = '';
   if (context.hasNoPdf || (context.overleafErrors && context.overleafErrors.length > 0)) {
@@ -199,8 +222,7 @@ ${userQuery}
 (Note: Return ONLY the raw replacement LaTeX snippet for the selected code. Be concise for high-speed generation.)`;
   } else if (context.currentFileContent && context.currentFileContent.trim().length > 0) {
     // When no selection is made, supply document code so the model can pinpoint errors or target sections
-    const doc = context.currentFileContent.trim();
-    const docSnippet = doc.length <= 10000 ? doc : doc.slice(0, 10000);
+    const docSnippet = selectDocumentExcerpt(context.currentFileContent.trim(), isErrorFixing);
 
     fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
@@ -212,7 +234,11 @@ ${docSnippet}
 [USER INSTRUCTION]
 ${userQuery}
 
-(Note: Return ONLY the targeted LaTeX snippet or section to replace. Do NOT reprint the full document if only fixing an error or updating a section. Be fast and concise.)`;
+(Note: Return ONLY the targeted LaTeX to replace — never the full document unless asked. Your output is matched back into the document automatically, so shape it as follows:
+- Rewriting a whole section: include its \\section{...} header line.
+- Rewriting one or more jobs/projects: return each complete entry starting at its \\resumeSubheading / \\resumeProjectHeading, keeping the company or project name exactly as written.
+- Rewriting individual bullets: return only those \\resumeItem{...} / \\item lines, one per line, in their original order.
+- Omit anything you did not change.)`;
   } else if (context.currentLineText) {
     fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
@@ -230,6 +256,13 @@ ${contextDescription ? contextDescription : 'None specified.'}
 ${userQuery}`;
   }
 
+  if (isExplanationOnly) {
+    fullUserPrompt = fullUserPrompt.replace(
+      /\(Note: Return ONLY[\s\S]*\)$/,
+      '(Note: This is a question. Answer it directly and concisely in plain prose — short LaTeX examples are fine, but do not rewrite the document.)'
+    );
+  }
+
   return {
     systemPrompt: getSystemPrompt(effectiveDocMode, isErrorFixing),
     userPrompt: fullUserPrompt,
@@ -238,15 +271,65 @@ ${userQuery}`;
   };
 }
 
+const DOCUMENT_EXCERPT_LIMIT = 24000;
+
 /**
- * Strips accidental markdown code fences (```latex ... ```) if the model emitted them,
- * ensuring raw LaTeX for seamless diff and patch operations.
+ * Picks the part of the document to show the model. Long preambles (Jake's
+ * Resume is ~3k chars of macro definitions) are summarized so the budget goes to
+ * the content being edited; error fixing keeps the preamble because that is
+ * often where the error is.
+ */
+export function selectDocumentExcerpt(doc: string, keepPreamble: boolean): string {
+  if (doc.length <= DOCUMENT_EXCERPT_LIMIT) return doc;
+
+  const beginIdx = doc.indexOf('\\begin{document}');
+  if (keepPreamble || beginIdx === -1) {
+    return `${doc.slice(0, DOCUMENT_EXCERPT_LIMIT)}\n% [...document truncated...]`;
+  }
+
+  const preamble = doc.slice(0, beginIdx);
+  const macros = Array.from(
+    new Set(Array.from(preamble.matchAll(/\\(?:re)?newcommand\*?\s*\{?(\\[a-zA-Z@]+)/g), (m) => m[1]))
+  );
+  const header =
+    `% [Preamble omitted (${preamble.length} chars).` +
+    (macros.length > 0 ? ` Custom macros it defines: ${macros.slice(0, 25).join(', ')}` : '') +
+    ']\n';
+
+  const body = doc.slice(beginIdx);
+  const budget = DOCUMENT_EXCERPT_LIMIT - header.length;
+  return header + (body.length <= budget ? body : `${body.slice(0, budget)}\n% [...document truncated...]`);
+}
+
+const CHATTER_START = /^(?:here(?:'s| is| are)|sure|certainly|of course|below is|okay|ok|great)\b[^\n]*:\s*$/i;
+const CHATTER_END = /^(?:let me know|i(?:'ve| have) |this (?:version|revision|update)|these changes|note:|feel free)/i;
+
+/**
+ * Strips accidental markdown code fences (```latex ... ```) and conversational
+ * wrapper lines ("Here is the revised text:", "Let me know if...") if the model
+ * emitted them, ensuring raw LaTeX for seamless diff and patch operations.
+ * Real explanations (substantial prose, several code blocks) are left intact.
  */
 export function cleanModelOutput(rawOutput: string): string {
   let text = rawOutput.trim();
 
-  // Strip leading code fence: ```latex or ```tex or ```
-  const fenceStartMatch = text.match(/^```(?:latex|tex)?\r?\n/i);
+  // A single fenced block surrounded by a line or two of chatter: keep only the block
+  const fences = text.match(/```/g) || [];
+  if (fences.length === 2) {
+    const fenced = text.match(/^([\s\S]*?)```[a-zA-Z]*[ \t]*\r?\n([\s\S]*?)\r?\n?```([\s\S]*)$/);
+    if (fenced) {
+      const isShortWrapper = (part: string, maxLines: number) => {
+        const partLines = part.split('\n').filter((l) => l.trim());
+        return partLines.length <= maxLines && partLines.every((l) => l.trim().length <= 120);
+      };
+      if (isShortWrapper(fenced[1], 1) && isShortWrapper(fenced[3], 2)) {
+        return fenced[2].trim();
+      }
+    }
+  }
+
+  // Strip leading code fence: ```latex or ```tex or ``` (also when output was cut off)
+  const fenceStartMatch = text.match(/^```(?:latex|tex)?[ \t]*\r?\n/i);
   if (fenceStartMatch) {
     text = text.slice(fenceStartMatch[0].length);
   }
@@ -256,5 +339,14 @@ export function cleanModelOutput(rawOutput: string): string {
     text = text.slice(0, -3).trimEnd();
   }
 
-  return text;
+  // Unfenced chatter lines around LaTeX output
+  const lines = text.split('\n');
+  if (lines.length > 1 && CHATTER_START.test(lines[0].trim()) && /^\s*[\\%]/.test(lines.slice(1).join('\n').trim())) {
+    lines.shift();
+  }
+  while (lines.length > 1 && CHATTER_END.test(lines[lines.length - 1].trim()) && /[\\}]/.test(lines.slice(0, -1).join('\n'))) {
+    lines.pop();
+  }
+
+  return lines.join('\n').trim();
 }

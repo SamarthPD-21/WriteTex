@@ -21,7 +21,7 @@ const SHORTCUTS: ShortcutItem[] = [
   {
     category: 'General',
     keys: ['Esc'],
-    description: 'Close panel or back to input view',
+    description: 'Go back (discards a pending review) or close the panel',
   },
   {
     category: 'Generation',
@@ -31,7 +31,7 @@ const SHORTCUTS: ShortcutItem[] = [
   {
     category: 'Review & Diff',
     keys: ['Ctrl', 'Shift', 'Enter'],
-    description: 'Apply diff changes directly into Overleaf document',
+    description: 'Apply the reviewed change to your Overleaf document',
   },
   {
     category: 'History',

@@ -122,7 +122,7 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
     icon: '🎯',
     description: 'Accomplished [X] as measured by [Y] by doing [Z]',
     userPrompt:
-      'Rewrite these resume achievements following Google\'s XYZ formula: "Accomplished [X] as measured by [Y] by doing [Z]". Insert realistic quantifiable metric placeholders (e.g., % improvement, latency reduction, scale, users served) where needed. Keep the candidate\'s real company, dates, and technologies intact.',
+      'Rewrite these resume achievements following Google\'s XYZ formula: "Accomplished [X] as measured by [Y] by doing [Z]". Keep every existing number verbatim; where a metric is missing, insert a clearly marked placeholder such as \\textbf{[X\\%]} or \\textbf{[N users]} instead of inventing one. Keep the candidate\'s real company, dates, and technologies intact.',
   },
   {
     id: 'action_verbs',
@@ -140,7 +140,7 @@ export const RESUME_ACTION_PRESETS: ResumePreset[] = [
     icon: '📈',
     description: 'Inject concrete scale, dollar savings, throughput, and % metrics',
     userPrompt:
-      'Enhance each bullet point with concrete quantifiable results and scale indicators (e.g. TPS, percentage latency reduction, cost savings, user scale, team size, data volume). Preserve existing technologies and organizations.',
+      'Enhance each bullet point with quantifiable results and scale indicators (e.g. TPS, percentage latency reduction, cost savings, user scale, team size, data volume). Reuse any numbers already present; never invent a specific figure — where one is missing, insert a clearly marked placeholder like \\textbf{[X\\%]} for me to fill in. Preserve existing technologies and organizations.',
   },
   {
     id: 'action_one_page',

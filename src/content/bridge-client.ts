@@ -4,6 +4,8 @@ import {
   BridgeCommand,
   BridgeResponse,
   CurrentLineInfo,
+  EditOutcome,
+  EditorSnapshot,
   SelectionRange,
 } from '../messaging/types';
 
@@ -89,6 +91,22 @@ class BridgeClient {
       return res.payload;
     }
     return null;
+  }
+
+  public async getSnapshot(): Promise<EditorSnapshot | null> {
+    const res = await this.sendCommand<BridgeResponse>({ type: 'GET_SNAPSHOT' });
+    return res.type === 'SNAPSHOT_RESULT' ? res.payload : null;
+  }
+
+  /** Replaces [from, to) only if it still contains `expected`. */
+  public async applyEdit(from: number, to: number, replacement: string, expected: string): Promise<EditOutcome> {
+    const res = await this.sendCommand<BridgeResponse>({
+      type: 'REPLACE_RANGE',
+      payload: { from, to, replacement, expected },
+    });
+    if (res.type !== 'MUTATION_RESULT') return 'failed';
+    if (res.success) return 'applied';
+    return res.error === 'STALE' ? 'stale' : 'failed';
   }
 
   public async getCurrentLine(): Promise<CurrentLineInfo | null> {

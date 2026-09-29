@@ -1,77 +1,41 @@
-import { parseSseStream } from './stream-parser';
+import { streamChatCompletions } from './openai-compatible';
+import { ProviderRequest, StreamPart } from './types';
 
-export async function* streamOpenAI(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string,
-  temperature = 0.2
-): AsyncGenerator<string> {
-  const url = 'https://api.openai.com/v1/chat/completions';
+/** Reasoning models (o-series, GPT-5 family) reject custom temperature. */
+export function isOpenAIReasoningModel(model: string): boolean {
+  return /^(?:o\d|gpt-5)/.test(model);
+}
 
-  const isReasoningModel = model.startsWith('o1') || model.startsWith('o3');
+export function streamOpenAI(req: ProviderRequest): AsyncGenerator<StreamPart> {
+  const reasoning = isOpenAIReasoningModel(req.model);
+  // o1 / o1-mini predate system-message support
+  const legacy = /^o1(?:-mini|-preview)?$/.test(req.model);
 
-  const messages = isReasoningModel
-    ? [
-        {
-          role: 'user',
-          content: `${systemPrompt}\n\n${userPrompt}`,
-        },
-      ]
+  const messages = legacy
+    ? [{ role: 'user', content: `${req.systemPrompt}\n\n${req.userPrompt}` }]
     : [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: userPrompt,
-        },
+        { role: 'system', content: req.systemPrompt },
+        { role: 'user', content: req.userPrompt },
       ];
 
-  const payload: Record<string, any> = {
-    model,
-    messages,
-    stream: true,
-  };
-
-  if (!isReasoningModel) {
-    payload.temperature = temperature;
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+  return streamChatCompletions(
+    'https://api.openai.com/v1/chat/completions',
+    'OpenAI',
+    req.apiKey,
+    {
+      model: req.model,
+      messages,
+      max_completion_tokens: req.maxOutputTokens,
+      ...(reasoning ? {} : { temperature: req.temperature }),
     },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    let errMsg = `OpenAI API error: HTTP ${response.status}`;
-    try {
-      const errorJson = await response.json();
-      if (errorJson?.error?.message) {
-        errMsg = errorJson.error.message;
-      }
-    } catch {
-      // Ignore
-    }
-    throw new Error(errMsg);
-  }
-
-  yield* parseSseStream(response, (data) => {
-    return data.choices?.[0]?.delta?.content;
-  });
+    req.signal
+  );
 }
 
 export async function validateOpenAIKey(apiKey: string): Promise<boolean> {
   try {
     const res = await fetch('https://api.openai.com/v1/models', {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
     return res.ok;
   } catch {

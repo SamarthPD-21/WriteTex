@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "WriteTex — AI Copilot for LaTeX",
-  "version": "0.2.0",
-  "description": "AI copilot for LaTeX and academic writing. Understands, edits, and improves papers directly in Overleaf.",
+  "name": "WriteTex \u2014 AI Copilot for LaTeX",
+  "version": "0.3.0",
+  "description": "AI copilot for tailoring LaTeX resumes and cover letters directly in Overleaf.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -32,7 +32,9 @@
         "*://*.overleaf.com/project/*",
         "*://*.overleaf.com/read/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -40,7 +42,9 @@
         "*://*.overleaf.com/project/*",
         "*://*.overleaf.com/read/*"
       ],
-      "js": ["bridge.js"],
+      "js": [
+        "bridge.js"
+      ],
       "world": "MAIN",
       "run_at": "document_idle"
     }
@@ -61,5 +65,15 @@
       },
       "description": "Toggle WriteTex AI Panel"
     }
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "pdf-extractor.js"
+      ],
+      "matches": [
+        "*://*.overleaf.com/*"
+      ]
+    }
+  ]
 }
