@@ -575,35 +575,71 @@ function scoreProse(d: Block, r: Block): number {
  * Splits a replacement into its \section chunks. Text before the first header is
  * attached to the first chunk so nothing the model wrote is dropped.
  */
+const HEADER_KEY = '__header__';
+
+/** True for text that looks like a resume/letter heading (name, contact links), not stray chatter. */
+function looksLikeHeader(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return /\\begin\{center\}|\\textbf\{|\\Huge|\\LARGE|\\href|\\name\b|\\address\b|@|\\makecvtitle/.test(t);
+}
+
+/**
+ * Splits a replacement into its \section chunks. Text before the first header is
+ * the document heading (name and contact line); it becomes its own block so it
+ * replaces the existing heading instead of being glued onto the first section.
+ */
 function splitReplacementSections(rep: string): Block[] {
   const headers = [...rep.matchAll(/\\section\*?\s*\{([^}]+)\}/g)];
-  return headers.map((h, i) => {
-    const from = i === 0 ? 0 : h.index!;
+  if (headers.length === 0) return [];
+  const blocks: Block[] = [];
+  const lead = rep.slice(0, headers[0].index!).replace(/\\begin\{document\}/, '').trim();
+  if (looksLikeHeader(lead)) {
+    blocks.push({ from: 0, to: headers[0].index!, text: lead, key: HEADER_KEY, kind: 'header' });
+  }
+  headers.forEach((h, i) => {
+    // Unrecognized leading text (chatter) stays attached to the first section so nothing is lost
+    const from = i === 0 && blocks.length === 0 ? 0 : h.index!;
     const to = i + 1 < headers.length ? headers[i + 1].index! : rep.length;
-    return {
+    blocks.push({
       from,
       to,
       text: rep.slice(from, to).trim(),
       key: h[1].trim(),
       kind: getSectionCategory(h[1]),
-    };
+    });
   });
+  return blocks;
 }
 
+/** The document's sections, preceded by its heading block (between \begin{document} and the first section). */
 function sectionBlocks(doc: string, sections: DetectedSection[]): Block[] {
-  return sections.map((s) => {
+  const blocks: Block[] = [];
+  const beginIdx = doc.indexOf('\\begin{document}');
+  if (beginIdx !== -1 && sections.length > 0) {
+    let from = beginIdx + '\\begin{document}'.length;
+    while (from < sections[0].startIndex && /\s/.test(doc[from])) from++;
+    const to = trimEndIndex(doc, from, sections[0].startIndex);
+    if (to > from && looksLikeHeader(doc.slice(from, to))) {
+      blocks.push({ from, to, text: doc.slice(from, to), key: HEADER_KEY, kind: 'header' });
+    }
+  }
+  for (const s of sections) {
     const to = trimEndIndex(doc, s.startIndex, s.endIndex);
-    return {
+    blocks.push({
       from: s.startIndex,
       to,
       text: doc.slice(s.startIndex, to),
       key: s.title,
       kind: s.category,
-    };
-  });
+    });
+  }
+  return blocks;
 }
 
 function scoreSections(d: Block, r: Block): number {
+  // A heading only ever replaces the heading
+  if (d.kind === 'header' || r.kind === 'header') return d.kind === r.kind ? 1 : 0;
   if (d.key.toLowerCase() === r.key.toLowerCase()) return 1;
   if (d.kind !== 'other' && d.kind === r.kind) return 0.9;
   // A custom-titled section (e.g. "Core Engineering Endeavors") may be the one being rewritten
@@ -874,7 +910,8 @@ export function locateWrongSnippetInDoc(
     }
 
     // The document lacks this section: insert it where it conventionally belongs
-    const insertIdx = findSectionInsertSlot(doc, docSections, repSections[0].kind as SectionCategory);
+    const firstSection = repSections.find((b) => b.kind !== 'header') || repSections[0];
+    const insertIdx = findSectionInsertSlot(doc, docSections, firstSection.kind as SectionCategory);
     const atSectionStart = docSections.some((s) => s.startIndex === insertIdx);
     return {
       from: insertIdx,

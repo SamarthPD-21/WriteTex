@@ -186,10 +186,25 @@ export function buildPrompt(
   }
 
   // Attached files (PDF, TXT, MD, TEX) context
+  // Sample content left over from a template (Jake's Resume and generic placeholders)
+  let templateSection = '';
+  const placeholders = findTemplatePlaceholders(context.currentFileContent || '');
+  if (placeholders.length > 0) {
+    templateSection =
+      `[TEMPLATE PLACEHOLDERS IN DOCUMENT]\n` +
+      `The document still contains sample template content: ${placeholders.join(', ')}.\n` +
+      `Replace every placeholder (heading, contact details, sample entries) with the candidate's real details from the attached documents or their instruction. ` +
+      `Never keep sample entries next to real ones, and never output a second heading. If a real detail is unknown, leave that line out rather than keeping the sample.\n\n`;
+  }
+
   let attachmentsSection = '';
   if (context.attachedFiles && context.attachedFiles.length > 0) {
     attachmentsSection += `[ATTACHED REFERENCE DOCUMENTS]\n`;
-    attachmentsSection += `The user has attached ${context.attachedFiles.length} document(s) for reference:\n\n`;
+    attachmentsSection += `The user has attached ${context.attachedFiles.length} document(s) for reference:\n`;
+    if (context.attachedFiles.some((f) => looksLikeResume(f.text))) {
+      attachmentsSection += `At least one attachment is the candidate's own resume: treat it as the source of truth for names, employers, titles, dates, links, and numbers. Use its real figures instead of placeholders.\n`;
+    }
+    attachmentsSection += `\n`;
     for (const file of context.attachedFiles) {
       const pageInfo = file.pageCount ? ` (${file.pageCount} pages, ${file.formattedSize})` : ` (${file.formattedSize})`;
       attachmentsSection += `--- BEGIN ATTACHED FILE: ${file.name}${pageInfo} ---\n`;
@@ -210,7 +225,7 @@ export function buildPrompt(
   let fullUserPrompt = '';
 
   if (context.selectedText && context.selectedText.trim().length > 0) {
-    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${templateSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 
 ${codeHeader}
@@ -224,7 +239,7 @@ ${userQuery}
     // When no selection is made, supply document code so the model can pinpoint errors or target sections
     const docSnippet = selectDocumentExcerpt(context.currentFileContent.trim(), isErrorFixing);
 
-    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${templateSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 ${context.currentLineNumber ? `Active line: ${context.currentLineNumber}` : ''}
 
@@ -238,9 +253,10 @@ ${userQuery}
 - Rewriting a whole section: include its \\section{...} header line.
 - Rewriting one or more jobs/projects: return each complete entry starting at its \\resumeSubheading / \\resumeProjectHeading, keeping the company or project name exactly as written.
 - Rewriting individual bullets: return only those \\resumeItem{...} / \\item lines, one per line, in their original order.
+- Rewriting the whole resume or several sections: return the heading block (name and contact line) once, then each \\section exactly once, in the document's order. Never output any section, entry, or the heading twice, and never output the preamble or \\begin{document}.
 - Omit anything you did not change.)`;
   } else if (context.currentLineText) {
-    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${templateSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 Current line (${context.currentLineNumber || 1}): ${context.currentLineText}
 
@@ -249,7 +265,7 @@ ${userQuery}
 
 (Note: Return ONLY the replacement LaTeX snippet. Be concise.)`;
   } else {
-    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${attachmentsSection}[LATEX CONTEXT]
+    fullUserPrompt = `${errorSection}${targetHeader}${githubSection}${templateSection}${attachmentsSection}[LATEX CONTEXT]
 ${contextDescription ? contextDescription : 'None specified.'}
 
 [USER INSTRUCTION]
@@ -269,6 +285,35 @@ ${userQuery}`;
     isExplanationOnly,
     detectedDocMode: effectiveDocMode,
   };
+}
+
+// Distinctive sample text from Jake's Resume and generic resume templates
+const TEMPLATE_PLACEHOLDERS: [RegExp, string][] = [
+  [/\bJane Doe\b/, 'Jane Doe'],
+  [/\bJohn Doe\b/, 'John Doe'],
+  [/\bJake Ryan\b/, 'Jake Ryan'],
+  [/[\w.]+@example\.com/, 'an @example.com email'],
+  [/jake@su\.edu/, 'jake@su.edu'],
+  [/123-456-7890/, '123-456-7890'],
+  [/linkedin\.com\/in\/(?:jake|janedoe|johndoe)\b/, 'a sample LinkedIn URL'],
+  [/github\.com\/(?:jake|janedoe|johndoe)\b/, 'a sample GitHub URL'],
+  [/Southwestern University/, 'Southwestern University'],
+  [/Blinn College/, 'Blinn College'],
+  [/Gitlytics/, 'Gitlytics'],
+  [/Simple Paintball/, 'Simple Paintball'],
+  [/Undergraduate Research Assistant/, 'Undergraduate Research Assistant (sample role)'],
+  [/Texas A&M|Southwestern University|Georgetown, TX/, 'sample locations'],
+  [/Lorem ipsum/i, 'lorem ipsum text'],
+];
+
+export function findTemplatePlaceholders(doc: string): string[] {
+  return [...new Set(TEMPLATE_PLACEHOLDERS.filter(([re]) => re.test(doc)).map(([, label]) => label))];
+}
+
+/** Heuristic: text with contact details plus experience/education reads as a resume. */
+function looksLikeResume(text: string): boolean {
+  const lower = text.toLowerCase();
+  return /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(text) && /experience|employment/.test(lower) && /education|university|college|school/.test(lower);
 }
 
 const DOCUMENT_EXCERPT_LIMIT = 24000;

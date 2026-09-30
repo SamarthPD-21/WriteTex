@@ -1,25 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "WriteTex \u2014 AI Copilot for LaTeX",
+  "name": "WriteTex — AI resume & cover letter copilot for Overleaf",
   "version": "0.3.0",
-  "description": "AI copilot for tailoring LaTeX resumes and cover letters directly in Overleaf.",
+  "description": "Tailor LaTeX resumes and cover letters to a job, check ATS readiness, and apply reviewed edits right inside Overleaf.",
   "icons": {
     "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
   "permissions": [
     "storage",
-    "activeTab",
-    "scripting",
-    "tabs"
+    "scripting"
   ],
   "host_permissions": [
-    "*://*.overleaf.com/*",
-    "https://api.meta.ai/*",
+    "https://*.overleaf.com/*",
+    "https://api.anthropic.com/*",
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*",
-    "https://api.anthropic.com/*",
+    "https://api.meta.ai/*",
     "https://api.github.com/*"
   ],
   "background": {
@@ -29,8 +28,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.overleaf.com/project/*",
-        "*://*.overleaf.com/read/*"
+        "https://*.overleaf.com/project/*"
       ],
       "js": [
         "content.js"
@@ -39,8 +37,7 @@
     },
     {
       "matches": [
-        "*://*.overleaf.com/project/*",
-        "*://*.overleaf.com/read/*"
+        "https://*.overleaf.com/project/*"
       ],
       "js": [
         "bridge.js"
@@ -50,9 +47,10 @@
     }
   ],
   "action": {
-    "default_title": "WriteTex",
+    "default_title": "WriteTex — works on Overleaf projects",
     "default_icon": {
       "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     }
@@ -63,7 +61,7 @@
         "default": "Ctrl+Shift+W",
         "mac": "Command+Shift+W"
       },
-      "description": "Toggle WriteTex AI Panel"
+      "description": "Open or close the WriteTex panel"
     }
   },
   "web_accessible_resources": [
@@ -72,8 +70,10 @@
         "pdf-extractor.js"
       ],
       "matches": [
-        "*://*.overleaf.com/*"
+        "https://*.overleaf.com/*"
       ]
     }
-  ]
+  ],
+  "short_name": "WriteTex",
+  "homepage_url": "https://github.com/SamarthPD-21/WriteTex"
 }

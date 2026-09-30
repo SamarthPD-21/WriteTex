@@ -1,12 +1,13 @@
 import { EditorAdapter } from '../types';
 import { CurrentLineInfo, EditOutcome, EditorSnapshot, SelectionRange } from '../../messaging/types';
 import { bridgeClient } from '../../content/bridge-client';
+import { isOverleafProjectUrl } from '../../shared/overleaf-url';
 import { extractActiveFileName, OVERLEAF_SELECTORS } from './dom-selectors';
 
 export class OverleafAdapter implements EditorAdapter {
   public isActive(): boolean {
     return (
-      window.location.hostname.includes('overleaf.com') &&
+      isOverleafProjectUrl(window.location.href) &&
       Boolean(document.querySelector(OVERLEAF_SELECTORS.cmContent || OVERLEAF_SELECTORS.cmEditor))
     );
   }

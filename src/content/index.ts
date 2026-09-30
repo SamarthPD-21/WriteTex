@@ -1,12 +1,11 @@
 import { mountWriteTexUI } from './shadow-host';
+import { isOverleafProjectUrl } from '../shared/overleaf-url';
 
-console.log('[WriteTex] Content script loaded on Overleaf');
-
-// Mount WriteTex UI once DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
+// The manifest already limits where this runs; this guards injected copies too
+if (isOverleafProjectUrl(window.location.href)) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => mountWriteTexUI());
+  } else {
     mountWriteTexUI();
-  });
-} else {
-  mountWriteTexUI();
+  }
 }

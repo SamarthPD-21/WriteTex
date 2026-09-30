@@ -1,15 +1,17 @@
 import React from 'react';
-import { Gauge, Wand2, Sparkles } from 'lucide-react';
+import { Wand2, Sparkles } from 'lucide-react';
 import { AtsFix, AtsReport, AtsSeverity } from '../../analysis/ats-score';
-import { Button, Chip, Collapsible } from './ui';
+import { Button } from './ui';
 
-interface AtsScoreCardProps {
-  report: AtsReport | null;
+interface AtsReportViewProps {
+  report: AtsReport;
   isGenerating: boolean;
   onFix: (fix: AtsFix) => void;
+  /** Rendered under the "Keyword match" bar (the job's missing/covered keywords). */
+  keywordDetail?: React.ReactNode;
 }
 
-const scoreTone = (score: number) =>
+export const scoreTone = (score: number) =>
   score >= 85 ? 'success' : score >= 70 ? 'accent' : score >= 50 ? 'warning' : 'danger';
 
 const BAR_COLORS: Record<string, string> = {
@@ -26,33 +28,17 @@ const SEVERITY_DOT: Record<AtsSeverity, string> = {
 };
 
 /** Explainable ATS readiness estimate: category bars plus the fixes that raise it. */
-export const AtsScoreCard: React.FC<AtsScoreCardProps> = ({ report, isGenerating, onFix }) => {
-  if (!report) return null;
-  const tone = scoreTone(report.score);
-
+export const AtsReportView: React.FC<AtsReportViewProps> = ({ report, isGenerating, onFix, keywordDetail }) => {
+  // The keyword chips already cover missing keywords; don't repeat them as an issue
+  const issues = keywordDetail ? report.issues.filter((i) => i.id !== 'missing-keywords') : report.issues;
   return (
-    <Collapsible
-      icon={<Gauge className="w-3.5 h-3.5" />}
-      title="ATS check"
-      summary={
-        <span className="flex items-center gap-1.5 min-w-0">
-          <Chip tone={tone} title="Estimated ATS readiness out of 100">
-            {report.score} · {report.rating}
-          </Chip>
-          <span className="truncate">
-            {report.keywordsSkipped
-              ? 'add a job description to score keywords'
-              : `${report.issues.filter((i) => i.severity !== 'info').length} to fix`}
-          </span>
-        </span>
-      }
-    >
+    <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-1.5">
         {report.categories.map((c) => {
           const skipped = c.weight === 0;
           const catTone = scoreTone(c.score);
           return (
-            <div key={c.id} className="grid grid-cols-[104px_1fr_28px] items-center gap-2 text-[10.5px]">
+            <div key={c.id} className="grid grid-cols-[104px_1fr_28px] items-center gap-x-2 gap-y-1.5 text-[10.5px]">
               <span className="text-zinc-400 truncate">{c.label}</span>
               {skipped ? (
                 <span className="text-zinc-500 italic">needs a job description</span>
@@ -69,6 +55,7 @@ export const AtsScoreCard: React.FC<AtsScoreCardProps> = ({ report, isGenerating
                 </div>
               )}
               <span className="text-right font-mono text-zinc-300">{skipped ? '—' : c.score}</span>
+              {c.id === 'keywords' && keywordDetail && <div className="col-span-3 pl-1 pb-1">{keywordDetail}</div>}
             </div>
           );
         })}
@@ -79,9 +66,9 @@ export const AtsScoreCard: React.FC<AtsScoreCardProps> = ({ report, isGenerating
         {report.stats.words} words
       </div>
 
-      {report.issues.length > 0 ? (
+      {issues.length > 0 ? (
         <ul className="flex flex-col gap-1">
-          {report.issues.map((issue) => (
+          {issues.map((issue) => (
             <li key={issue.id} className="flex items-start gap-2 p-2 rounded-lg bg-surface-1 border border-line">
               <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${SEVERITY_DOT[issue.severity]}`} aria-label={issue.severity} />
               <div className="flex-1 min-w-0">
@@ -111,6 +98,6 @@ export const AtsScoreCard: React.FC<AtsScoreCardProps> = ({ report, isGenerating
       <p className="text-[10px] text-zinc-500 leading-snug">
         An estimate of how ATS parsers read your resume. Real systems differ; treat the issues, not the number, as the guide.
       </p>
-    </Collapsible>
+    </div>
   );
 };

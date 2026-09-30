@@ -5,16 +5,17 @@ import { BasePreset, COVER_LETTER_PRESETS, ROLE_PRESETS } from '../../prompts/pr
 import { analyzeKeywordGap } from '../../analysis/keyword-gap';
 import { AtsFix, scoreAtsReadiness } from '../../analysis/ats-score';
 import { scrapeOverleafErrors } from '../../adapters/overleaf/error-scraper';
-import { AtsScoreCard } from './AtsScoreCard';
 import { OverleafDiagnosticsResult } from '../../adapters/overleaf/error-scraper';
 import { HistoryItem, Workspace } from '../hooks/useWorkspace';
-import { TargetSection } from './TargetSection';
+import { JobMatchSection } from './JobMatchSection';
 import { GitHubAction, GitHubSection } from './GitHubSection';
 import { DiagnosticsCard } from './DiagnosticsCard';
 import { HistorySection } from './HistorySection';
 import { PresetBar } from './PresetBar';
 import { PromptComposer } from './PromptComposer';
-import { Button, Chip } from './ui';
+import { Button, CardGroup, Chip } from './ui';
+
+const PROVIDER_LABELS: Record<AIProviderId, string> = { anthropic: 'Claude', gemini: 'Gemini', openai: 'OpenAI', meta: 'Meta' };
 
 const GITHUB_ACTION_PROMPTS: Record<GitHubAction, string> = {
   action_github_projects:
@@ -82,7 +83,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   }, [workspace.jobDescription, workspace.targetRole, currentFileContent]);
 
   const atsReport = useMemo(() => {
-    if (docMode !== 'resume' || !currentFileContent.includes('\\begin{document}')) return null;
+    // No score without a job description: ATS ranking is always relative to a specific job
+    if (docMode !== 'resume' || workspace.jobDescription.trim().length < 20 || !currentFileContent.includes('\\begin{document}')) return null;
     const log = scrapeOverleafErrors();
     return scoreAtsReadiness({
       latex: currentFileContent,
@@ -157,15 +159,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               <TextSelect className="w-2.5 h-2.5" />
               {selectedText.length} chars
             </Chip>
-          ) : (
-            <Chip title="Without a selection, WriteTex finds the right place in the file">Whole file</Chip>
-          )}
+          ) : null}
         </div>
 
         {!hasApiKey && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-100">
             <KeyRound className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-            <span className="flex-1">Add your {settings.provider} API key to start.</span>
+            <span className="flex-1">Add your {PROVIDER_LABELS[settings.provider]} API key to start.</span>
             <Button size="xs" variant="primary" onClick={onOpenSettings}>
               Open settings
             </Button>
@@ -187,22 +187,36 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           }}
         />
 
-        <TargetSection
-          workspace={workspace}
-          onUpdate={onUpdateWorkspace}
-          keywordGap={keywordGap}
-          onUsePrompt={onPromptChange}
-        />
-
-        <AtsScoreCard report={atsReport} isGenerating={isGenerating} onFix={runAtsFix} />
-
-        <GitHubSection
-          workspace={workspace}
-          onUpdate={onUpdateWorkspace}
-          isGenerating={isGenerating}
-          onPreview={onPreview}
-          onRunAction={(action) => onGenerate(GITHUB_ACTION_PROMPTS[action], action)}
-        />
+        <CardGroup>
+          <JobMatchSection
+            bare
+            workspace={workspace}
+            onUpdate={onUpdateWorkspace}
+            keywordGap={keywordGap}
+            atsReport={atsReport}
+            scoresAts={docMode === 'resume'}
+            isGenerating={isGenerating}
+            onFix={runAtsFix}
+            onUsePrompt={onPromptChange}
+          />
+          <GitHubSection
+            bare
+            workspace={workspace}
+            onUpdate={onUpdateWorkspace}
+            isGenerating={isGenerating}
+            onPreview={onPreview}
+            onRunAction={(action) => onGenerate(GITHUB_ACTION_PROMPTS[action], action)}
+          />
+          {workspace.history.length > 0 && (
+            <HistorySection
+              bare
+              history={workspace.history}
+              onReuse={onPromptChange}
+              onReview={onReviewHistory}
+              onClear={() => onUpdateWorkspace({ history: [] })}
+            />
+          )}
+        </CardGroup>
 
         <PresetBar
           docMode={docMode}
@@ -211,13 +225,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             setActivePresetId(preset?.id ?? null);
             onPromptChange(preset?.userPrompt ?? '');
           }}
-        />
-
-        <HistorySection
-          history={workspace.history}
-          onReuse={onPromptChange}
-          onReview={onReviewHistory}
-          onClear={() => onUpdateWorkspace({ history: [] })}
         />
       </div>
 

@@ -5,12 +5,36 @@ const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB limit
 type PdfExtractorModule = typeof import('./pdf-worker');
 let pdfExtractor: Promise<PdfExtractorModule> | null = null;
 
+/**
+ * Resolved once, while the extension context is alive. When the extension is
+ * reloaded or updated, Chrome removes `chrome.runtime` from content scripts that are
+ * already running in open tabs; the packaged file keeps the same URL, so importing
+ * it from the remembered address still works.
+ */
+const PDF_EXTRACTOR_URL: string | null = (() => {
+  try {
+    return chrome.runtime.getURL('pdf-extractor.js');
+  } catch {
+    return null;
+  }
+})();
+
+const EXTENSION_RELOADED_MSG = 'WriteTex was updated. Refresh this Overleaf tab (Ctrl+R) to read PDFs again.';
+
 /** Loads the PDF extractor bundle the first time a PDF is attached. */
 function loadPdfExtractor(): Promise<PdfExtractorModule> {
   if (!pdfExtractor) {
-    pdfExtractor = import(/* @vite-ignore */ chrome.runtime.getURL('pdf-extractor.js')) as Promise<PdfExtractorModule>;
-    pdfExtractor.catch(() => {
+    let url = PDF_EXTRACTOR_URL;
+    if (!url) {
+      try {
+        url = chrome.runtime.getURL('pdf-extractor.js');
+      } catch {
+        return Promise.reject(new Error(EXTENSION_RELOADED_MSG));
+      }
+    }
+    pdfExtractor = (import(/* @vite-ignore */ url) as Promise<PdfExtractorModule>).catch(() => {
       pdfExtractor = null;
+      throw new Error(EXTENSION_RELOADED_MSG);
     });
   }
   return pdfExtractor;
@@ -153,7 +177,7 @@ export async function extractTextFromFile(file: File): Promise<FileExtractionRes
     const message = err?.message || 'Failed to read file';
     return {
       success: false,
-      error: `Could not parse "${file.name}": ${message}`,
+      error: message === EXTENSION_RELOADED_MSG ? message : `Could not parse "${file.name}": ${message}`,
     };
   }
 }

@@ -153,6 +153,14 @@ export const PromptComposer: React.FC<PromptComposerProps> = ({
             setRecallIndex(-1);
           }}
           onKeyDown={handleKeyDown}
+          onPaste={(e) => {
+            // Pasting a copied file (PDF, TXT…) attaches it instead of inserting nothing
+            const files = Array.from(e.clipboardData?.files || []);
+            if (files.length > 0) {
+              e.preventDefault();
+              addFiles(files);
+            }
+          }}
           placeholder={placeholder}
           rows={2}
           disabled={isGenerating}

@@ -14,10 +14,9 @@ import { TemplateLibraryModal } from './components/TemplateLibraryModal';
 import { useEditor } from './hooks/useEditor';
 import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
-import { useWorkspace, HistoryItem } from './hooks/useWorkspace';
-import { usePanelPosition } from './hooks/usePanelPosition';
-import { usePanelResize } from './hooks/usePanelResize';
-import { EditPlan, createPlan, invertPlan, planEdit, rebasePlan } from '../diff/edit-plan';
+import { useWorkspace, HistoryItem, EMPTY_WORKSPACE } from './hooks/useWorkspace';
+import { usePanelLayout } from './hooks/usePanelLayout';
+import { EditPlan, createPlan, invertPlan, planEdit, rebasePlan, structuralWarnings } from '../diff/edit-plan';
 import { autoRepairLatexDocument } from '../latex/auto-repair';
 import { unicodeMappingPatch } from '../analysis/ats-score';
 import { isExtensionContextValid } from '../messaging/runtime';
@@ -44,8 +43,7 @@ export const App: React.FC = () => {
   const { settings, updateSettings, validateKey, isValidating } = useSettings();
   const ai = useAI(settings);
   const { workspace, update: updateWorkspace, addHistory } = useWorkspace(editor.projectId);
-  const { width: panelWidth, handleMouseDownResize } = usePanelResize();
-  const { position, handleMouseDown } = usePanelPosition(panelWidth);
+  const layout = usePanelLayout();
 
   const { result } = ai;
   const hasSelection = Boolean(editor.selectionRange && !editor.selectionRange.empty);
@@ -271,10 +269,11 @@ export const App: React.FC = () => {
 
   const handleEditSave = async (text: string) => {
     const plan = result?.plan;
+    const doc = (await editor.getFullContent()) ?? '';
     if (plan) {
-      ai.updatePlan({ ...plan, newText: text });
+      const warnings = structuralWarnings(doc, doc.slice(0, plan.from) + text + doc.slice(plan.to));
+      ai.updatePlan({ ...plan, newText: text, warnings });
     } else {
-      const doc = (await editor.getFullContent()) ?? '';
       ai.updatePlan(planEdit(doc, text, { fileName: editor.currentFileName, approximateIndex: editor.currentLine?.from }));
     }
     setView('review');
@@ -352,17 +351,16 @@ export const App: React.FC = () => {
 
       <Panel
         isOpen={isOpen}
-        position={position}
-        width={panelWidth}
-        onMouseDownHeader={handleMouseDown}
-        onMouseDownResize={handleMouseDownResize}
+        rect={layout.rect}
+        dragMode={layout.dragMode}
+        beginDrag={layout.beginDrag}
+        onResetLayout={layout.reset}
         isSettingsOpen={view === 'settings'}
         onToggleSettings={() => setView(view === 'settings' ? 'input' : 'settings')}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         undoCount={undoStack.length}
         onUndo={isApplying ? undefined : handleUndo}
-        onMinimize={() => setIsOpen(false)}
         onClose={() => setIsOpen(false)}
         isEditorConnected={editor.isEditorReady}
       >
@@ -463,6 +461,10 @@ export const App: React.FC = () => {
             onValidateKey={validateKey}
             isValidating={isValidating}
             onBack={() => setView('input')}
+            onClearWorkspace={() => {
+              updateWorkspace({ ...EMPTY_WORKSPACE });
+              addToast('info', 'Cleared saved data for this project.');
+            }}
           />
         )}
 

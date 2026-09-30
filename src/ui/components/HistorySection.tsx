@@ -4,13 +4,15 @@ import { HistoryItem } from '../hooks/useWorkspace';
 import { Button, Chip, Collapsible, formatRelativeTime } from './ui';
 
 interface HistorySectionProps {
+  /** Render as a row inside a CardGroup. */
+  bare?: boolean;
   history: HistoryItem[];
   onReuse: (prompt: string) => void;
   onReview: (item: HistoryItem) => void;
   onClear: () => void;
 }
 
-export const HistorySection: React.FC<HistorySectionProps> = ({ history, onReuse, onReview, onClear }) => {
+export const HistorySection: React.FC<HistorySectionProps> = ({ bare, history, onReuse, onReview, onClear }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -24,6 +26,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({ history, onReuse
 
   return (
     <Collapsible
+      bare={bare}
       icon={<Clock className="w-3.5 h-3.5" />}
       title="History"
       summary={`${history.length} ${history.length === 1 ? 'request' : 'requests'} · last ${formatRelativeTime(history[0].timestamp)}`}

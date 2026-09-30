@@ -24,6 +24,8 @@ export interface EditPlan {
   /** Surrounding text, used to re-find the target if the document changes. */
   contextBefore: string;
   contextAfter: string;
+  /** Structural problems the edit would introduce (duplicate sections, a second heading…). */
+  warnings: string[];
 }
 
 const CONTEXT_CHARS = 60;
@@ -111,6 +113,49 @@ function describe(doc: string, reason: PlanReason, from: number, originalText: s
   }
 }
 
+function sectionTitles(text: string): string[] {
+  return [...text.matchAll(/\\section\*?\s*\{([^}]+)\}/g)].map((m) => stripMacros(m[1]).toLowerCase());
+}
+
+function duplicates(list: string[]): string[] {
+  return [...new Set(list.filter((x, i) => list.indexOf(x) !== i))];
+}
+
+/** Number of name/contact heading blocks between \begin{document} and the first section. */
+function headingCount(text: string): number {
+  const begin = text.indexOf('\\begin{document}');
+  const body = begin === -1 ? text : text.slice(begin);
+  const firstSection = body.search(/\\section\*?\s*\{/);
+  const head = firstSection === -1 ? body : body.slice(0, firstSection);
+  return (head.match(/\\begin\{center\}|\\makecvtitle|\\maketitle/g) || []).length;
+}
+
+/**
+ * Compares the document before and after an edit and reports problems the edit
+ * introduces (not ones already there): repeated sections, a second heading,
+ * repeated \documentclass / \begin{document} / \end{document}.
+ */
+export function structuralWarnings(before: string, after: string): string[] {
+  const warnings: string[] = [];
+  const existingDupes = new Set(duplicates(sectionTitles(before)));
+  const newDupes = duplicates(sectionTitles(after)).filter((t) => !existingDupes.has(t));
+  if (newDupes.length > 0) {
+    warnings.push(`This would leave duplicate sections: ${newDupes.map((t) => `“${t}”`).join(', ')}.`);
+  }
+  if (headingCount(after) > Math.max(1, headingCount(before))) {
+    warnings.push('This would leave two name/contact headings at the top.');
+  }
+  for (const [pattern, label] of [
+    [/\\documentclass/g, '\\documentclass'],
+    [/\\begin\{document\}/g, '\\begin{document}'],
+    [/\\end\{document\}/g, '\\end{document}'],
+  ] as const) {
+    const n = (after.match(pattern) || []).length;
+    if (n > 1 && n > (before.match(pattern) || []).length) warnings.push(`This would leave ${n} ${label} lines.`);
+  }
+  return warnings;
+}
+
 export function createPlan(
   doc: string,
   from: number,
@@ -134,6 +179,7 @@ export function createPlan(
     endLine: lineOf(doc, Math.max(from, to - 1)),
     contextBefore: doc.slice(Math.max(0, from - CONTEXT_CHARS), from),
     contextAfter: doc.slice(to, to + CONTEXT_CHARS),
+    warnings: structuralWarnings(doc, doc.slice(0, from) + newText + doc.slice(to)),
   };
 }
 
@@ -241,5 +287,6 @@ export function invertPlan(plan: EditPlan, appliedFrom: number): EditPlan {
     reason: 'undo',
     confidence: 1,
     description: `Undo: ${plan.description}`,
+    warnings: [],
   };
 }

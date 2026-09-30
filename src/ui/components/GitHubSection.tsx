@@ -16,6 +16,8 @@ export const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-3.
 export type GitHubAction = 'action_github_projects' | 'action_github_skills' | 'cl_github_story';
 
 interface GitHubSectionProps {
+  /** Render as a row inside a CardGroup. */
+  bare?: boolean;
   workspace: Workspace;
   onUpdate: (patch: Partial<Workspace>) => void;
   /** Runs an AI preset that uses the analyzed projects. */
@@ -25,7 +27,7 @@ interface GitHubSectionProps {
   isGenerating: boolean;
 }
 
-export const GitHubSection: React.FC<GitHubSectionProps> = ({ workspace, onUpdate, onRunAction, onPreview, isGenerating }) => {
+export const GitHubSection: React.FC<GitHubSectionProps> = ({ bare, workspace, onUpdate, onRunAction, onPreview, isGenerating }) => {
   const { githubUrl, githubAnalysis: analysis, targetRole, jobDescription, docMode } = workspace;
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +105,7 @@ export const GitHubSection: React.FC<GitHubSectionProps> = ({ workspace, onUpdat
 
   return (
     <Collapsible
+      bare={bare}
       icon={<GithubIcon />}
       title="GitHub"
       summary={summary}

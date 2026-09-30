@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 280" width="440" height="280">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="440" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#15142a"/><stop offset="1" stop-color="#0b0b14"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="110" cy="140" r="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6d28d9" stop-opacity=".45"/><stop offset="1" stop-color="#6d28d9" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="440" height="280" fill="url(#page)"/>
+  <rect width="440" height="280" fill="url(#glow)"/>
+  <g transform="translate(40 92)">
+    <rect width="96" height="96" rx="26" fill="url(#bg)"/>
+    <g transform="translate(-16 -16)">
+      <path d="M48 36c-8 0-10 4-10 10v8c0 5-3 9-8 10 5 1 8 5 8 10v8c0 6 2 10 10 10" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M80 36c8 0 10 4 10 10v8c0 5 3 9 8 10-5 1-8 5-8 10v8c0 6-2 10-10 10" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M64 44c2.4 11 5.3 13.9 16.3 16.3C69.3 62.7 66.4 65.6 64 76.6 61.6 65.6 58.7 62.7 47.7 60.3 58.7 57.9 61.6 55 64 44z" fill="#fde68a"/>
+    </g>
+  </g>
+  <text x="160" y="128" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="38" font-weight="700" fill="#fff">WriteTex</text>
+  <text x="161" y="158" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#c4b5fd">Tailor LaTeX resumes &amp; cover letters</text>
+  <text x="161" y="178" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#c4b5fd">right inside Overleaf.</text>
+</svg>

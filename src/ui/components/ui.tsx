@@ -72,8 +72,9 @@ export const Chip: React.FC<{ tone?: ChipTone; className?: string; title?: strin
 );
 
 /**
- * A card section with a one-line summary that expands on click. Keeps the input
- * view short: set-up details stay out of the way until needed.
+ * A section with a one-line summary that expands on click. Keeps the input view
+ * short: set-up details stay out of the way until needed. `bare` renders it as a
+ * row inside a <CardGroup> instead of as its own card.
  */
 export const Collapsible: React.FC<{
   icon: React.ReactNode;
@@ -83,8 +84,9 @@ export const Collapsible: React.FC<{
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   actions?: React.ReactNode;
+  bare?: boolean;
   children: React.ReactNode;
-}> = ({ icon, title, summary, defaultOpen = false, open, onOpenChange, actions, children }) => {
+}> = ({ icon, title, summary, defaultOpen = false, open, onOpenChange, actions, bare = false, children }) => {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const isOpen = open ?? internalOpen;
   const toggle = () => {
@@ -92,28 +94,35 @@ export const Collapsible: React.FC<{
     if (open === undefined) setInternalOpen(!isOpen);
   };
 
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2">
+  const content = (
+    <>
+      <div className={`flex items-center gap-2 px-3 py-2 ${isOpen ? '' : 'hover:bg-white/[0.02]'}`}>
         <button
           type="button"
           onClick={toggle}
           aria-expanded={isOpen}
           className="flex-1 min-w-0 flex items-center gap-2 text-left group"
         >
-          <span className="shrink-0 text-indigo-300">{icon}</span>
-          <span className="text-[11.5px] font-semibold text-zinc-100 shrink-0">{title}</span>
-          {summary && <span className="min-w-0 truncate text-[11px] text-zinc-400">{summary}</span>}
+          <span className="shrink-0 w-4 flex justify-center text-zinc-400 group-hover:text-indigo-300 transition-colors">{icon}</span>
+          <span className="text-[11.5px] font-medium text-zinc-100 shrink-0">{title}</span>
+          {summary && <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">{summary}</span>}
           <ChevronDown
-            className={`ml-auto w-3.5 h-3.5 shrink-0 text-zinc-500 group-hover:text-zinc-300 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            className={`ml-auto w-3.5 h-3.5 shrink-0 text-zinc-600 group-hover:text-zinc-300 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           />
         </button>
         {actions}
       </div>
       {isOpen && <div className="px-3 pb-3 pt-0.5 flex flex-col gap-2 animate-panel-in">{children}</div>}
-    </Card>
+    </>
   );
+
+  return bare ? <div>{content}</div> : <Card className="overflow-hidden">{content}</Card>;
 };
+
+/** Stacks bare Collapsible rows in one card with hairline dividers. */
+export const CardGroup: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Card className="overflow-hidden divide-y divide-line">{children}</Card>
+);
 
 export const inputClass =
   'w-full px-2.5 py-1.5 bg-surface-0 border border-line rounded-lg text-[11px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-indigo-500/70 focus:ring-2 focus:ring-indigo-500/15 transition-colors';

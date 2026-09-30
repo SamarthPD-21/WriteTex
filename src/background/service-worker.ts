@@ -8,6 +8,7 @@ import { routeAndStreamAI } from './ai-router';
 import { cleanModelOutput } from '../prompts/builder';
 import { analyzeGitHubProfile } from '../integrations/github/client';
 import { FinishReason } from './providers/types';
+import { isOverleafProjectUrl } from '../shared/overleaf-url';
 
 console.log('[WriteTex] Service Worker initialized');
 
@@ -108,49 +109,64 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
   return false;
 });
 
-// 3. Helper to safely toggle WriteTex on active tab
-async function togglePanelOnTab(tabId?: number) {
-  if (!tabId) return;
+// 3. Only Overleaf project editors: toggle there, never anywhere else
+async function togglePanelOnTab(tab?: chrome.tabs.Tab) {
+  // tab.url is only visible for sites WriteTex has host access to (Overleaf), so any
+  // other page arrives here without a URL and is ignored
+  if (!tab?.id || !isOverleafProjectUrl(tab.url)) return;
+  const tabId = tab.id;
 
   try {
-    // Attempt sending toggle message
     await chrome.tabs.sendMessage(tabId, { type: 'WRITETEX_TOGGLE_PANEL' });
   } catch {
-    // "Could not establish connection. Receiving end does not exist" happens when:
-    // 1) The active tab is not an Overleaf tab, or
-    // 2) The Overleaf tab was open before the extension was installed/reloaded.
+    // The tab was open before WriteTex was installed or reloaded: inject both scripts, then toggle
     try {
-      const tab = await chrome.tabs.get(tabId);
-      if (tab.url?.includes('overleaf.com')) {
-        // Dynamically inject content script into this tab
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          files: ['content.js'],
-        });
-
-        // Give it 150ms to mount, then send toggle
-        setTimeout(() => {
-          chrome.tabs.sendMessage(tabId, { type: 'WRITETEX_TOGGLE_PANEL' }).catch(() => {});
-        }, 150);
-      }
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['bridge.js'], world: 'MAIN' });
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tabId, { type: 'WRITETEX_TOGGLE_PANEL' }).catch(() => {});
+      }, 150);
     } catch {
-      // Ignored for non-injectable tabs (chrome://, new tab, etc.)
+      // Tab closed or navigated away meanwhile
     }
   }
 }
 
-// 4. Handle Keyboard shortcuts and Extension Action clicks
+// 4. Keyboard shortcut and toolbar button
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'open-writetex') {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      await togglePanelOnTab(tab.id);
-    }
+    await togglePanelOnTab(tab);
   }
 });
 
-chrome.action.onClicked.addListener(async (tab) => {
-  if (tab?.id) {
-    await togglePanelOnTab(tab.id);
-  }
+chrome.action.onClicked.addListener((tab) => {
+  togglePanelOnTab(tab);
 });
+
+// 5. The toolbar button is greyed out on every tab except Overleaf project pages.
+// Without the "tabs" permission a tab's URL is only visible for Overleaf (our host
+// permission), so every other tab reads as "not a project" and is disabled.
+async function syncActionForTab(tabId: number) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (isOverleafProjectUrl(tab.url)) await chrome.action.enable(tabId);
+    else await chrome.action.disable(tabId);
+  } catch {
+    // Tab closed meanwhile
+  }
+}
+
+async function syncAllTabs() {
+  // Per-tab state is what matters; clear any global disable left by older versions
+  await chrome.action.enable();
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(tabs.filter((t) => t.id !== undefined).map((t) => syncActionForTab(t.id!)));
+}
+
+chrome.tabs.onCreated.addListener((tab) => tab.id !== undefined && syncActionForTab(tab.id));
+chrome.tabs.onUpdated.addListener((tabId) => syncActionForTab(tabId));
+chrome.runtime.onInstalled.addListener(() => {
+  syncAllTabs().catch(() => {});
+});
+syncAllTabs().catch(() => {});

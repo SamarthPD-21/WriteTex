@@ -2,6 +2,7 @@ import {
   BRIDGE_MSG_SOURCE_CONTENT,
   BRIDGE_MSG_SOURCE_PAGE,
 } from '../../messaging/types';
+import { isOverleafProjectUrl } from '../../shared/overleaf-url';
 
 /**
  * WriteTex CodeMirror 6 MAIN World Bridge.
@@ -9,7 +10,8 @@ import {
  * transactionally with the CodeMirror 6 EditorView.
  */
 (() => {
-  console.log('[WriteTex CM6 Bridge] Injected into page context');
+  // Only Overleaf project editors expose a document to WriteTex
+  if (!isOverleafProjectUrl(window.location.href)) return;
 
   function getEditorView(): any {
     // 1. Try .cm-content.cmView.view (primary CM6 DOM attachment)

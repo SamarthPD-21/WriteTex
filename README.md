@@ -100,13 +100,14 @@ npm install
 npm test          # unit tests
 npm run build     # production build (minified) into dist/
 npm run dev       # unminified build for debugging
+node scripts/generate-icons.js   # re-render icons & store art from assets/brand/*.svg (needs rsvg-convert)
 ```
 
 ### 2. Load the extension in Chrome
 
 1. Open `chrome://extensions/` and turn on **Developer mode**.
 2. Click **Load unpacked** and choose the `dist/` folder of this project.
-3. Open any project on [Overleaf](https://www.overleaf.com/).
+3. Open any project on [Overleaf](https://www.overleaf.com/). WriteTex only runs on project pages, and its toolbar button is greyed out elsewhere.
 4. Click the `✦ WriteTex` button in the bottom-right corner, or press `Ctrl+Shift+W`.
 5. Open Settings (`⚙`) and add an API key for your provider.
 
@@ -173,6 +174,8 @@ WriteTex
 ---
 
 ## 🔒 Privacy & Security
+- **Runs only on Overleaf project pages.** Content scripts match only `https://*.overleaf.com/project/*`, and the toolbar button is greyed out everywhere else. The extension has no `tabs`, `activeTab` or all-sites permission.
+- Full policy: [PRIVACY.md](PRIVACY.md). Chrome Web Store listing and privacy-practice answers: [CHROMEWEBSTORE.md](CHROMEWEBSTORE.md).
 - **No middleman server.** Your document is sent straight from your browser to the AI provider you pick. WriteTex has no backend that reads, caches or logs your drafts.
 - **API keys are stored unencrypted** in this browser’s extension storage (`chrome.storage.local`) and are sent only to that provider’s API. Use a key with a spending limit.
 - Your target job, job description, GitHub analysis, attachments and history are stored locally per Overleaf project, in the same extension storage.

@@ -78,7 +78,6 @@ export const PresetBar: React.FC<PresetBarProps> = ({ docMode, activePresetId, o
                   : 'bg-surface-2 border-line text-zinc-300 hover:text-white hover:border-indigo-500/40'
               }`}
             >
-              {preset.icon && <span aria-hidden="true">{preset.icon}</span>}
               {preset.label}
             </button>
           );

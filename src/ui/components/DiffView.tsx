@@ -153,6 +153,14 @@ export const DiffView: React.FC<DiffViewProps> = ({
           )}
         </div>
       )}
+      {plan && plan.warnings.length > 0 && (
+        <div className="flex items-start gap-2 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/25 text-[10.5px] text-rose-100">
+          <AlertTriangle className="w-3 h-3 mt-0.5 text-rose-300 shrink-0" />
+          <span>
+            {plan.warnings.join(' ')} Select the part to replace and use “Use selection”, or edit before applying.
+          </span>
+        </div>
+      )}
       {newProblems.length > 0 && (
         <div className="flex items-start gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10.5px] text-amber-100">
           <AlertTriangle className="w-3 h-3 mt-0.5 text-amber-300 shrink-0" />
