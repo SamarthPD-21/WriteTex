@@ -7,6 +7,8 @@ export interface KeywordGapResult {
   matchedKeywords: string[];
   missingKeywords: string[];
   matchPercentage: number;
+  /** Coverage weighted by how prominent each keyword is in the JD (required > nice-to-have). */
+  weightedMatchPercentage: number;
   totalJdKeywords: number;
   suggestedPrompt: string;
 }
@@ -283,6 +285,7 @@ export function analyzeKeywordGap(
       matchedKeywords: [],
       missingKeywords: [],
       matchPercentage: 100,
+      weightedMatchPercentage: 100,
       totalJdKeywords: 0,
       suggestedPrompt: '',
     };
@@ -304,6 +307,9 @@ export function analyzeKeywordGap(
   missing.sort((a, b) => (jdScores.get(b) || 0) - (jdScores.get(a) || 0) || a.localeCompare(b));
 
   const matchPercentage = Math.round((matched.length / jdKeywords.length) * 100);
+  const totalWeight = jdKeywords.reduce((n, k) => n + (jdScores.get(k) || 0), 0);
+  const matchedWeight = matched.reduce((n, k) => n + (jdScores.get(k) || 0), 0);
+  const weightedMatchPercentage = totalWeight > 0 ? Math.round((matchedWeight / totalWeight) * 100) : matchPercentage;
 
   const topMissing = missing.slice(0, 6);
   let suggestedPrompt = '';
@@ -316,6 +322,7 @@ export function analyzeKeywordGap(
     matchedKeywords: matched,
     missingKeywords: missing,
     matchPercentage,
+    weightedMatchPercentage,
     totalJdKeywords: jdKeywords.length,
     suggestedPrompt,
   };

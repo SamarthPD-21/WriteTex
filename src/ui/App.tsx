@@ -19,6 +19,7 @@ import { usePanelPosition } from './hooks/usePanelPosition';
 import { usePanelResize } from './hooks/usePanelResize';
 import { EditPlan, createPlan, invertPlan, planEdit, rebasePlan } from '../diff/edit-plan';
 import { autoRepairLatexDocument } from '../latex/auto-repair';
+import { unicodeMappingPatch } from '../analysis/ats-score';
 import { isExtensionContextValid } from '../messaging/runtime';
 import { AVAILABLE_MODELS } from '../messaging/types';
 
@@ -293,6 +294,16 @@ export const App: React.FC = () => {
     setView('review');
   };
 
+  const handleAtsPatch = (patch: 'unicode-mapping') => {
+    if (patch !== 'unicode-mapping') return;
+    reviewOutput('ATS: unicode mapping', '', (doc) => {
+      const fix = unicodeMappingPatch(doc);
+      if (!fix) return null;
+      const plan = createPlan(doc, fix.at, fix.at, fix.insert, 'preamble', 1, editor.currentFileName);
+      return { ...plan, description: 'Adds unicode mapping so ATS can read the PDF text' };
+    });
+  };
+
   const handleInsertTemplate = (latex: string) => {
     setIsTemplatesOpen(false);
     reviewOutput('Template', latex, (doc) => {
@@ -393,6 +404,7 @@ export const App: React.FC = () => {
             onReviewHistory={handleReviewHistory}
             onPreview={(label, latex) => reviewOutput(label, latex)}
             onAutoRepair={handleAutoRepair}
+            onAtsPatch={handleAtsPatch}
             onRefreshDocument={async () => {
               const content = await editor.getFullContent();
               if (content !== null) setFullDoc(content);

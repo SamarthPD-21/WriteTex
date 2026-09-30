@@ -33,24 +33,38 @@ When nothing is selected, WriteTex works out what the model rewrote and replaces
 - The missing keywords are passed to the model with a strict instruction to add them **only where your real experience supports them**.
 - **No invented facts**: existing numbers are kept word for word. Where a metric would help, the model adds a marked placeholder such as `\textbf{[X\%]}` for you to fill in, rather than inventing one.
 
-### 5. GitHub-grounded projects
+### 5. ATS check
+- A live **ATS readiness score** (0–100) for the open resume, split into four parts:
+
+  | Part | Weight | What it checks |
+  | --- | --- | --- |
+  | Keyword match | 35% | Job-description coverage (required skills count more) and whether your target title appears |
+  | Parseability | 25% | LaTeX-specific problems: missing `\pdfgentounicode`/`glyphtounicode` (PDF text copies out garbled), icon fonts, images, multi-column layouts, compile errors |
+  | Sections & contact | 15% | Standard headings (Experience, Education, Skills), plus email, phone and LinkedIn in the header |
+  | Content quality | 25% | Action-verb openers, share of bullets with numbers, weak phrasing (“responsible for”), overly long bullets, overall length, unfilled `[X%]` placeholders |
+
+- Without a job description, keywords are skipped and the other three parts are reweighted.
+- Every deduction comes with an explanation. Most have a one-click fix: an AI rewrite (weak openers, missing metrics, missing keywords) or a reviewed, no-AI patch (adding the unicode mapping to the preamble). Any critical issue caps the rating at “Needs work”.
+- It’s an estimate: real ATS products (Workday, Greenhouse, Lever…) differ. It targets the steps they share, namely PDF text extraction, section detection and keyword matching.
+
+### 6. GitHub-grounded projects
 - Paste a GitHub profile or repo URL. WriteTex ranks your repositories for the target role and reads their verified tech stack and dependencies.
 - **Write Projects section** (AI), **Facts only** (a plain section built only from repository data, no AI), and **Sync skills**.
 - Tech stacks in project headings are capped at 3–4 core technologies, and frameworks your code doesn’t use are never added.
 
-### 6. Cover letters
+### 7. Cover letters
 - Switch to **Cover letter** mode (it’s picked automatically from file names like `cover_letter.tex`).
 - Presets to draft a full letter, an opening, a STAR evidence story or a closing, and to adjust tone.
 - The model states facts about the company only if they appear in the job description or your attached files.
 
-### 7. Compile-error help
+### 8. Compile-error help
 - Reads the errors from Overleaf’s log. **Fix LaTeX** also checks the file itself for broken macros, unbalanced braces and unclosed environments.
 - **Quick repair** fixes common damage (missing backslashes, truncated preamble lines) without AI, and shows the result for review first. **Fix with AI** handles everything else.
 
-### 8. Reference files
+### 9. Reference files
 - Attach PDF, TXT, MD or TEX files (an old resume, a job posting, notes). A job posting can be used as the target job description in one click.
 
-### 9. Bring your own key
+### 10. Bring your own key
 | Provider | Models |
 | --- | --- |
 | Anthropic Claude | Claude Opus 5, Claude Sonnet 5, Claude Haiku 4.5 |
@@ -112,6 +126,7 @@ Vitest covers:
 - **Providers**: SSE parsing, finish reasons (complete, truncated, refused), retries, per-model request rules.
 - **LaTeX**: validation (comments, escapes, `\verb`, verbatim environments), safe auto-repair, parsing.
 - **Keyword gap**: synonyms, ambiguous words, ranking by prominence.
+- **ATS score**: parsing, structure and content checks, keyword weighting, the unicode-mapping patch.
 - **Prompts**: context assembly, output cleaning, question vs. edit detection.
 - **GitHub**: ranking, formatting and LaTeX escaping.
 
@@ -140,7 +155,9 @@ WriteTex
 │   │   ├── smart-replace.ts          # Figures out where model output belongs
 │   │   ├── apply.ts                  # Exact / whitespace-insensitive / fuzzy snippet location
 │   │   └── compute.ts                # Line & word diffs
-│   ├── analysis/keyword-gap.ts       # Job-description keyword coverage
+│   ├── analysis/
+│   │   ├── keyword-gap.ts            # Job-description keyword coverage
+│   │   └── ats-score.ts              # ATS readiness score and fixes
 │   ├── latex/                        # validator, auto-repair, parser, context-builder
 │   ├── prompts/                      # system prompts, presets, builder, intent detection
 │   ├── integrations/

@@ -199,6 +199,20 @@ export function scrapeOverleafErrors(rootNode?: Document | Element | null): Over
     }
   }
 
+  // 5. The "View logs" toolbar badge is red when the last compile had errors, even if the
+  // logs pane itself was never rendered
+  if (!entries.some((e) => e.type === 'error') && typeof (root as Element).querySelector === 'function') {
+    const badge = root.querySelector('.log-btn .badge');
+    const badgeCount = parseInt(cleanText(badge), 10);
+    if (badge && /danger/.test(badge.className || '') && badgeCount > 0) {
+      entries.push({
+        type: 'error',
+        title: `${badgeCount} compile error${badgeCount > 1 ? 's' : ''} (open Overleaf's logs for details)`,
+        message: 'Reported by the Overleaf log badge',
+      });
+    }
+  }
+
   const errorCount = entries.filter((e) => e.type === 'error').length;
   const warnCount = entries.filter((e) => e.type === 'warning').length;
 

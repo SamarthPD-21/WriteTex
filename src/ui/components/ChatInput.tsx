@@ -3,6 +3,9 @@ import { FileText, Mail, KeyRound, TextSelect } from 'lucide-react';
 import { AIProviderId, DocumentMode, Settings } from '../../messaging/types';
 import { BasePreset, COVER_LETTER_PRESETS, ROLE_PRESETS } from '../../prompts/presets';
 import { analyzeKeywordGap } from '../../analysis/keyword-gap';
+import { AtsFix, scoreAtsReadiness } from '../../analysis/ats-score';
+import { scrapeOverleafErrors } from '../../adapters/overleaf/error-scraper';
+import { AtsScoreCard } from './AtsScoreCard';
 import { OverleafDiagnosticsResult } from '../../adapters/overleaf/error-scraper';
 import { HistoryItem, Workspace } from '../hooks/useWorkspace';
 import { TargetSection } from './TargetSection';
@@ -44,6 +47,8 @@ interface ChatInputProps {
   onAutoRepair: () => void;
   /** Re-reads the live document so scans see the latest text. */
   onRefreshDocument: () => Promise<void>;
+  /** Applies a deterministic ATS patch through the review screen. */
+  onAtsPatch: (patch: 'unicode-mapping') => void;
 }
 
 /** The input view: context set-up on top, presets, and a composer pinned to the bottom. */
@@ -65,6 +70,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onPreview,
   onAutoRepair,
   onRefreshDocument,
+  onAtsPatch,
 }) => {
   const { docMode } = workspace;
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
@@ -74,6 +80,22 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     if (!workspace.jobDescription.trim() || !currentFileContent) return null;
     return analyzeKeywordGap(workspace.jobDescription, currentFileContent, workspace.targetRole);
   }, [workspace.jobDescription, workspace.targetRole, currentFileContent]);
+
+  const atsReport = useMemo(() => {
+    if (docMode !== 'resume' || !currentFileContent.includes('\\begin{document}')) return null;
+    const log = scrapeOverleafErrors();
+    return scoreAtsReadiness({
+      latex: currentFileContent,
+      jobDescription: workspace.jobDescription,
+      targetRole: workspace.targetRole,
+      hasCompileErrors: log.hasNoPdf || log.entries.some((e) => e.type === 'error'),
+    });
+  }, [docMode, currentFileContent, workspace.jobDescription, workspace.targetRole]);
+
+  const runAtsFix = (fix: AtsFix) => {
+    if (fix.kind === 'patch') onAtsPatch(fix.patch);
+    else onGenerate(fix.prompt, fix.prompt.startsWith('Fix the LaTeX compile errors') ? 'fix_errors' : undefined);
+  };
 
   const allPresets: BasePreset[] = docMode === 'resume' ? ROLE_PRESETS : COVER_LETTER_PRESETS;
   const activePreset = allPresets.find((p) => p.id === activePresetId) || null;
@@ -171,6 +193,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           keywordGap={keywordGap}
           onUsePrompt={onPromptChange}
         />
+
+        <AtsScoreCard report={atsReport} isGenerating={isGenerating} onFix={runAtsFix} />
 
         <GitHubSection
           workspace={workspace}
